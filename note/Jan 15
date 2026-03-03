@@ -1,0 +1,90 @@
+Jan 15:
+
+Know nothing about what to do right now?
+Choosing to do the recommendation system for Yelp Dataset
+
+Two traditional methods:
+- Content-based Filtering : 
+	Base on the item feature (text, tag, category, embedding)
+	Recommend item base on what user liked or preferred
+	Cons: Easy to  Over-specialization, hard to explore the new thing
+	
+- Collaborative Filtering :
+	Base on the user behaviors (Rating, click, view,..)
+	Recommend item base on what other users  also liked or preferred
+	Cons: Cold-start (new user/ new items)
+	
+Using Hybrid System
+Hybrid RS = Content-based + Collaborative Filtering 
+(Take advantage of these two method and solve the pros and cons of each other)
+There are so many way of combining these two  method together
+
+- *Reduce Cold-Start
+- *Personalize better 
+- Take advantage of both content and users behaviors
+
+How to Combine them together:
+- *Weighted Hybrid (most common)
+	Mix score:
+	Score = a * score_CBF + (1-a) * score_CF
+	
+	Easy to implement and often use in production
+	E.g: new user (less behavior) -> a high (prioritize content-base method)
+		 old user (more behavior) -> a high (prioritize collaborative method)
+		 
+- *Switching Hybrid
+	Choose Content-based or Collaborative method in case:
+	
+	New user (less behavior) -> Content-based method
+	Old users(more behavior) -> Collaborative method
+	
+	Commonly use to handle cold-start
+		
+- Cascade Hybrid
+	High performance but hard to  implement and complicated
+	
+- Meta-level hybrid
+	Often implement in the big system like YouTube 
+	
+
+
+
+FAQs?
+
+****************************************************************
+- Fact: In reality, they use content like (text, image) for item embedding and  behavior for user embedding then put them all in deep model.
+
+****************************************
+- What is Cold-Start? : No data nor Recommendation?
+	Cold-Start User (new user) -> not click, not view, not liked, not buying -> How Collaborative possible? 
+	Cold-Start Item (new item) -> not interact -> no one see -> again and again -> feedback loop
+
+It's tough?
+Recommendation is not traditional supervised learning? like ML
+- Khong co Label ro  rang
+- No absolute ground truth
+- Hidden user preference, noise, change by time
+Deep learning is not able to handle Cold-Start itself!!!
+*Only user&content data and system design can help
+
+*************************************
+- Information Overload: A millions of product in Amazon, thousand of film in Netflix, unlimited streaming video YouTube
+	-> Even user can't find what they really want
+	-> Platform don't know  what to show first, what probably show first
+Recommendation System make decision what to show first for each user
+Make user excited -> Keep user using the platform ->  Commercial -> Monetize -> Okay
+
+**********************************
+- Personalization?
+
+Personalization is not "You liked this -> recommend this thing forever"
+personalization is I like this one and I also like to  explore the new things
+it's change by time
+
+
+	
+
+
+
+
+
