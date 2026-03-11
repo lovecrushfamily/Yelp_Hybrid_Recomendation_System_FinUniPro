@@ -1,1 +1,6 @@
-# ref_report/
+docs/
+local_data/
+data/
+notebooks/
+# processed/
+raw_data/

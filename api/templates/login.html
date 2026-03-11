@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>User Experience Login</title>
+  <style>
+    :root {
+      --red: #d32323;
+      --ink: #222;
+      --bg: #f4f4f4;
+      --card: #fff;
+      --edge: #e6e6e6;
+      --ok: #22863a;
+      --bad: #b31d28;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(900px 320px at 10% -20%, #ffd2b7, transparent),
+        radial-gradient(900px 320px at 100% 0%, #ffeaea, transparent),
+        var(--bg);
+      color: var(--ink);
+      font-family: "Helvetica Neue", Arial, sans-serif;
+    }
+    .box {
+      width: min(520px, 94vw);
+      background: var(--card);
+      border: 1px solid var(--edge);
+      border-radius: 10px;
+      padding: 18px;
+      box-shadow: 0 12px 26px rgba(0, 0, 0, 0.06);
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 1.3rem;
+    }
+    .sub {
+      margin: 0 0 14px;
+      color: #666;
+      font-size: .92rem;
+    }
+    label {
+      display: block;
+      margin: 10px 0 5px;
+      font-size: .86rem;
+      font-weight: 700;
+      color: #555;
+    }
+    input, select, button {
+      width: 100%;
+      border-radius: 7px;
+      padding: 10px;
+      font-size: .92rem;
+    }
+    input, select { border: 1px solid var(--edge); }
+    button {
+      border: 0;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 10px;
+      background: var(--red);
+    }
+    .status {
+      margin-top: 9px;
+      min-height: 17px;
+      font-size: .88rem;
+    }
+    .ok { color: var(--ok); font-weight: 700; }
+    .bad { color: var(--bad); font-weight: 700; }
+    .links {
+      margin-top: 12px;
+      font-size: .86rem;
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .links a { color: #0054a6; }
+  </style>
+</head>
+<body>
+  <section class="box">
+    <h1>User Experience Domain</h1>
+    <p class="sub">Login with a raw <code>user_id</code> and open personalized recommendations immediately.</p>
+
+    <label for="sampleUsers">Sample Yelp user IDs</label>
+    <select id="sampleUsers"></select>
+
+    <label for="userId">User ID</label>
+    <input id="userId" placeholder="paste full user_id" />
+
+    <button id="btnLogin">Continue</button>
+    <div id="status" class="status"></div>
+
+    <div class="links">
+      <a href="/basic" target="_blank">Single-user experiment (/basic)</a>
+      <a href="/management" target="_blank">Management dashboard (/management)</a>
+    </div>
+  </section>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const sampleEl = document.getElementById("sampleUsers");
+    const userEl = document.getElementById("userId");
+
+    function setStatus(ok, msg) {
+      statusEl.innerHTML = `<span class="${ok ? "ok" : "bad"}">[${ok ? "PASS" : "FAIL"}]</span> ${msg}`;
+    }
+
+    async function loadUsers() {
+      const res = await fetch("/users?limit=120&source=yelp");
+      const data = await res.json();
+      sampleEl.innerHTML = "";
+      (data.users || []).forEach((u) => {
+        const opt = document.createElement("option");
+        opt.value = u;
+        opt.textContent = u;
+        sampleEl.appendChild(opt);
+      });
+      if (sampleEl.value) userEl.value = sampleEl.value;
+    }
+
+    async function loginUX() {
+      const user_id = userEl.value.trim();
+      if (!user_id) return setStatus(false, "user_id is required");
+
+      const res = await fetch("/ux/login", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({user_id})
+      });
+      const data = await res.json();
+      if (!res.ok) return setStatus(false, data.detail || "login failed");
+
+      localStorage.setItem("ux_token", data.ux_token);
+      localStorage.setItem("ux_user_id", data.user_id);
+      window.location.href = "/experience/app";
+    }
+
+    sampleEl.addEventListener("change", () => { userEl.value = sampleEl.value; });
+    document.getElementById("btnLogin").addEventListener("click", loginUX);
+    loadUsers().catch(() => setStatus(false, "cannot load users"));
+  </script>
+</body>
+</html>

@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Experience Feed</title>
+  <style>
+    :root {
+      --bg: #f5f6f7;
+      --ink: #1f2933;
+      --muted: #6b7280;
+      --card: #fff;
+      --edge: #dfe4ea;
+      --accent: #d32323;
+      --brand: #121826;
+      --ok: #1f9d55;
+      --bad: #d64545;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+    }
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: linear-gradient(120deg, var(--brand), #1f2c43);
+      color: #fff;
+      border-bottom: 1px solid #ffffff1a;
+    }
+    .nav-inner {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 10px 14px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 190px 1fr 320px;
+      align-items: center;
+    }
+    @media (max-width: 1080px) {
+      .nav-inner {
+        grid-template-columns: 1fr;
+      }
+    }
+    .logo {
+      font-weight: 800;
+      letter-spacing: .02em;
+      font-size: 1.05rem;
+      white-space: nowrap;
+    }
+    .search-wrap {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 1fr 220px 110px;
+    }
+    @media (max-width: 880px) {
+      .search-wrap { grid-template-columns: 1fr; }
+    }
+    .nav input, .nav select, .nav button {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: .9rem;
+    }
+    .nav input, .nav select {
+      background: #f8fafc;
+      color: #111827;
+    }
+    .nav button {
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .nav-right {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      align-items: center;
+    }
+    .ghost-btn {
+      border: 1px solid #ffffff4d;
+      background: #ffffff14;
+      color: #fff;
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: .84rem;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .container {
+      max-width: 1380px;
+      margin: 12px auto 24px;
+      padding: 0 12px;
+    }
+    .section {
+      background: var(--card);
+      border: 1px solid var(--edge);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .section h2 {
+      margin: 0;
+      font-size: 1rem;
+    }
+    .section .sub {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: .84rem;
+    }
+    .grid {
+      margin-top: 10px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    }
+    .card {
+      background: #fff;
+      border: 1px solid var(--edge);
+      border-radius: 10px;
+      padding: 10px;
+      min-height: 128px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .thumb {
+      height: 76px;
+      border-radius: 8px;
+      background:
+        linear-gradient(120deg, #ffd9b5, #fef1e5 60%),
+        repeating-linear-gradient(45deg, #00000008, #00000008 8px, transparent 8px, transparent 16px);
+      border: 1px solid #f3d6bc;
+      display: grid;
+      place-items: center;
+      color: #7b4d2a;
+      font-weight: 700;
+      font-size: .82rem;
+      text-transform: uppercase;
+    }
+    .title {
+      margin: 0;
+      font-size: .92rem;
+      line-height: 1.3;
+      color: #154273;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: .82rem;
+    }
+    .status {
+      margin-top: 8px;
+      min-height: 16px;
+      font-size: .84rem;
+    }
+    .ok { color: var(--ok); font-weight: 700; }
+    .bad { color: var(--bad); font-weight: 700; }
+    .feed-foot {
+      margin-top: 10px;
+      text-align: center;
+      color: var(--muted);
+      font-size: .84rem;
+    }
+    .profile-pop {
+      position: fixed;
+      top: 58px;
+      right: 14px;
+      width: min(360px, 94vw);
+      background: #fff;
+      border: 1px solid var(--edge);
+      border-radius: 10px;
+      box-shadow: 0 14px 32px rgba(17, 24, 39, 0.18);
+      padding: 12px;
+      z-index: 30;
+      display: none;
+    }
+    .profile-pop.open { display: block; }
+    .profile-pop h3 {
+      margin: 0 0 6px;
+      font-size: .96rem;
+    }
+    .profile-pop .row {
+      font-size: .84rem;
+      margin-bottom: 5px;
+      color: #334155;
+      word-break: break-all;
+    }
+    .links {
+      margin-top: 8px;
+      font-size: .82rem;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .links a { color: #0f5aa9; }
+    #searchSection.hidden { display: none; }
+    #feedSentinel { height: 2px; }
+  </style>
+</head>
+<body>
+  <header class="nav">
+    <div class="nav-inner">
+      <div class="logo">Yelp Experience Feed</div>
+
+      <div class="search-wrap">
+        <input id="searchInput" placeholder="Search businesses by topic/name..." />
+        <select id="searchCategory">
+          <option value="">All categories</option>
+        </select>
+        <button id="btnSearch">Search</button>
+      </div>
+
+      <div class="nav-right">
+        <button class="ghost-btn" id="btnProfile">Profile</button>
+        <button class="ghost-btn" id="btnRefresh">Refresh Feed</button>
+        <button class="ghost-btn" id="btnLogout">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <aside id="profilePop" class="profile-pop">
+    <h3>My Snapshot</h3>
+    <div id="profileBox"></div>
+    <div class="links">
+      <a href="/experience" target="_blank">Login domain</a>
+      <a href="/basic" target="_blank">Experiment domain</a>
+      <a href="/management" target="_blank">Management domain</a>
+    </div>
+  </aside>
+
+  <main class="container">
+    <section id="searchSection" class="section hidden">
+      <h2>Search Results (1-20)</h2>
+      <p class="sub">After this section, continue scrolling for your recommendation feed.</p>
+      <div id="searchGrid" class="grid"></div>
+    </section>
+
+    <section class="section">
+      <h2>Recommended For You</h2>
+      <p class="sub">Starts with 15 cards, then auto-loads more while you scroll.</p>
+      <div id="feedGrid" class="grid"></div>
+      <div id="feedStatus" class="feed-foot">Loading...</div>
+      <div id="feedSentinel"></div>
+    </section>
+  </main>
+
+  <div id="status" class="status" style="max-width:1380px;margin:0 auto 12px;padding:0 12px;"></div>
+
+  <script>
+    const uxToken = localStorage.getItem("ux_token");
+    const uxUserId = localStorage.getItem("ux_user_id");
+    if (!uxToken || !uxUserId) window.location.href = "/experience";
+
+    let feedOffset = 0;
+    let feedLimit = 15;
+    let feedHasMore = true;
+    let feedLoading = false;
+    let feedTotal = 0;
+
+    const statusEl = document.getElementById("status");
+    const feedGrid = document.getElementById("feedGrid");
+    const feedStatus = document.getElementById("feedStatus");
+
+    function setStatus(ok, msg) {
+      statusEl.innerHTML = `<span class="${ok ? "ok" : "bad"}">[${ok ? "PASS" : "FAIL"}]</span> ${msg}`;
+    }
+
+    function nearBottom(buffer = 320) {
+      return (window.innerHeight + window.scrollY) >= (document.body.offsetHeight - buffer);
+    }
+
+    function renderCards(rows) {
+      return rows.map((r) => `
+        <article class="card">
+          <div class="thumb">${(r.name || "biz").slice(0, 2)}</div>
+          <h3 class="title">${r.name || "(unknown business)"}</h3>
+          <div class="meta">${r.city || "-"}, ${r.state || "-"} | ⭐ ${r.stars ?? "n/a"} | ${r.review_count ?? "n/a"} reviews</div>
+          <div class="meta">${r.categories || ""}</div>
+        </article>
+      `).join("");
+    }
+
+    async function loadProfile() {
+      const res = await fetch("/ux/me", {headers: {"X-UX-Token": uxToken}});
+      const data = await res.json();
+      if (!res.ok) return setStatus(false, data.detail || "profile failed");
+      document.getElementById("profileBox").innerHTML = `
+        <div class="row"><strong>User ID:</strong> ${data.user_id || uxUserId}</div>
+        <div class="row"><strong>Activity:</strong> ${data.activity_level || "N/A"}</div>
+        <div class="row"><strong>Interactions:</strong> ${data.interaction_count ?? 0}</div>
+        <div class="row"><strong>Top categories:</strong> ${(data.top_categories || []).slice(0, 5).join(", ") || "N/A"}</div>
+      `;
+    }
+
+    async function loadCategories() {
+      const res = await fetch("/ux/categories?limit=220");
+      const data = await res.json();
+      const el = document.getElementById("searchCategory");
+      (data.categories || []).forEach((x) => {
+        const opt = document.createElement("option");
+        opt.value = x.category;
+        opt.textContent = `${x.category} (${x.count})`;
+        el.appendChild(opt);
+      });
+    }
+
+    async function loadMoreFeed(refresh = false) {
+      if (feedLoading) return;
+      if (!feedHasMore && !refresh) return;
+      feedLoading = true;
+
+      if (refresh) {
+        feedOffset = 0;
+        feedHasMore = true;
+        feedTotal = 0;
+        feedGrid.innerHTML = "";
+      }
+
+      const url = `/ux/recommend?offset=${feedOffset}&limit=${feedLimit}${refresh ? "&refresh=true" : ""}`;
+      const res = await fetch(url, {headers: {"X-UX-Token": uxToken}});
+      const data = await res.json();
+      if (!res.ok) {
+        feedLoading = false;
+        return setStatus(false, data.detail || "feed load failed");
+      }
+
+      const rows = data.recommendations || [];
+      feedGrid.insertAdjacentHTML("beforeend", renderCards(rows));
+      feedOffset = Number(data.next_offset || 0);
+      feedHasMore = !!data.has_more;
+      feedTotal = Number(data.total || 0);
+      feedLoading = false;
+
+      if (feedHasMore) {
+        feedStatus.textContent = `Loaded ${feedOffset}/${feedTotal}. Scroll for more...`;
+      } else {
+        feedStatus.textContent = `End of feed. Total shown: ${feedTotal}`;
+      }
+      setStatus(true, `feed loaded ${rows.length} items`);
+
+      // If viewport is still near bottom, keep filling so infinite scroll doesn't stall.
+      if (feedHasMore && nearBottom(360)) {
+        setTimeout(() => loadMoreFeed(false), 0);
+      }
+    }
+
+    async function runSearch() {
+      const q = document.getElementById("searchInput").value.trim();
+      const category = document.getElementById("searchCategory").value.trim();
+      const section = document.getElementById("searchSection");
+      const grid = document.getElementById("searchGrid");
+
+      if (!q && !category) {
+        section.classList.add("hidden");
+        grid.innerHTML = "";
+        setStatus(true, "search cleared");
+        return;
+      }
+
+      const res = await fetch(
+        `/ux/search?q=${encodeURIComponent(q)}&categories=${encodeURIComponent(category)}&limit=20`,
+        {headers: {"X-UX-Token": uxToken}}
+      );
+      const data = await res.json();
+      if (!res.ok) return setStatus(false, data.detail || "search failed");
+
+      const rows = data.businesses || [];
+      section.classList.remove("hidden");
+      grid.innerHTML = rows.length ? renderCards(rows) : "<div class='meta'>No matches. Keep scrolling for recommendations below.</div>";
+      setStatus(true, `search returned ${rows.length} businesses`);
+    }
+
+    function toggleProfile() {
+      document.getElementById("profilePop").classList.toggle("open");
+    }
+
+    function logout() {
+      localStorage.removeItem("ux_token");
+      localStorage.removeItem("ux_user_id");
+      window.location.href = "/experience";
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) loadMoreFeed(false).catch(() => {});
+      });
+    }, {rootMargin: "240px"});
+    observer.observe(document.getElementById("feedSentinel"));
+
+    window.addEventListener("scroll", () => {
+      if (nearBottom(380)) {
+        loadMoreFeed(false).catch(() => {});
+      }
+    }, {passive: true});
+
+    document.getElementById("btnSearch").addEventListener("click", runSearch);
+    document.getElementById("btnRefresh").addEventListener("click", () => loadMoreFeed(true));
+    document.getElementById("btnProfile").addEventListener("click", toggleProfile);
+    document.getElementById("btnLogout").addEventListener("click", logout);
+
+    Promise.all([loadProfile(), loadCategories(), loadMoreFeed(true)]).catch(() => {
+      setStatus(false, "initial loading failed");
+    });
+  </script>
+</body>
+</html>

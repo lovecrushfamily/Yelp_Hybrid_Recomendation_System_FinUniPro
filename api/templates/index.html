@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Basic Demo - 3 Column Explainability</title>
+  <style>
+    :root {
+      --bg: #f7f8f4;
+      --ink: #212a24;
+      --muted: #66756b;
+      --card: #fff;
+      --edge: #dce2da;
+      --accent: #d85d27;
+      --ok: #2b8a3e;
+      --bad: #c92a2a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 380px at 0% -25%, #ffe8be, transparent),
+        radial-gradient(1200px 380px at 100% -20%, #d8f1e7, transparent),
+        var(--bg);
+      color: var(--ink);
+    }
+    .wrap {
+      max-width: 1420px;
+      margin: 22px auto;
+      padding: 0 14px 24px;
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 360px 1fr 1fr;
+      align-items: start;
+    }
+    @media (max-width: 1200px) {
+      .wrap { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--edge);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 10px 20px rgba(36, 50, 42, 0.05);
+      min-height: 74vh;
+    }
+    h1 { margin: 0 0 6px; font-size: 1.36rem; }
+    h2 { margin: 0 0 10px; font-size: 1rem; }
+    .sub { color: var(--muted); margin: 0 0 12px; font-size: .9rem; }
+    label { display: block; font-size: .86rem; font-weight: 600; margin: 8px 0 4px; color: #425248; }
+    input, select, button {
+      width: 100%;
+      border: 1px solid var(--edge);
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: .92rem;
+    }
+    button {
+      border: 0;
+      background: linear-gradient(120deg, var(--accent), #e98845);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    button.alt {
+      background: linear-gradient(120deg, #3f6558, #557e6e);
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 130px;
+      gap: 10px;
+    }
+    .status { font-size: .86rem; margin-top: 7px; color: var(--muted); min-height: 16px; }
+    .pill {
+      display: inline-block;
+      border: 1px solid var(--edge);
+      border-radius: 999px;
+      background: #fafbf9;
+      padding: 3px 8px;
+      margin-right: 6px;
+      margin-top: 6px;
+      font-size: .78rem;
+      color: #4f5f55;
+    }
+    .ok { color: var(--ok); font-weight: 700; }
+    .bad { color: var(--bad); font-weight: 700; }
+    .activity, .rec {
+      border: 1px solid var(--edge);
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 8px;
+      background: #fff;
+    }
+    .activity h3, .rec h3 {
+      margin: 0;
+      font-size: .98rem;
+    }
+    .meta { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+    .explain {
+      margin-top: 8px;
+      background: #f6faf7;
+      border-left: 3px solid #6ca883;
+      padding: 7px 8px;
+      font-size: .85rem;
+      color: #355245;
+      border-radius: 4px;
+    }
+    .uid {
+      font-family: "IBM Plex Mono", monospace;
+      word-break: break-all;
+    }
+    hr { border: 0; border-top: 1px solid var(--edge); margin: 14px 0; }
+    .sticky {
+      position: sticky;
+      top: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <aside class="card sticky">
+      <h1>Basic Explainability Demo</h1>
+      <p class="sub">Three-column view: user profile + checkpoint, activities, recommendations.</p>
+
+      <label for="user">User ID</label>
+      <input id="user" placeholder="Pick or enter user_id" />
+
+      <label for="users">Sample users</label>
+      <select id="users"></select>
+
+      <div class="row">
+        <div>
+          <label for="algorithm">Algorithm</label>
+          <select id="algorithm">
+            <option value="hybrid">Hybrid</option>
+            <option value="content">Content only</option>
+            <option value="cf">Collaborative only</option>
+          </select>
+        </div>
+        <div>
+          <label for="k">Top-K</label>
+          <input id="k" type="number" min="1" max="50" value="10" />
+        </div>
+      </div>
+
+      <button id="btnLoadUsers" class="alt">Load sample users</button>
+      <button id="btnProfile">Load user behavior</button>
+      <button id="btnRecommend">Recommend + Explain</button>
+      <button id="btnCheckpoint" class="alt">Run checkpoint</button>
+      <div id="status" class="status"></div>
+
+      <hr />
+      <h2>User Profile</h2>
+      <div id="profile" class="meta">No profile loaded.</div>
+
+      <hr />
+      <h2>Checkpoint</h2>
+      <div id="checkpoint" class="meta">No checkpoint yet.</div>
+    </aside>
+
+    <section class="card">
+      <h2>User Activities (Readable)</h2>
+      <div id="activities" class="meta">No activities loaded.</div>
+    </section>
+
+    <section class="card">
+      <h2>Recommendations + Why</h2>
+      <div id="recommendations" class="meta">No recommendations yet.</div>
+    </section>
+  </div>
+
+  <script>
+    const usersEl = document.getElementById("users");
+    const userEl = document.getElementById("user");
+    const algoEl = document.getElementById("algorithm");
+    const kEl = document.getElementById("k");
+    const statusEl = document.getElementById("status");
+
+    function fmtNum(v, d = 2) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n.toFixed(d) : "N/A";
+    }
+
+    function fmtList(values) {
+      return Array.isArray(values) && values.length ? values.join(", ") : "N/A";
+    }
+
+    function fmtDate(value) {
+      if (!value) return "N/A";
+      const dt = new Date(value);
+      if (Number.isNaN(dt.getTime())) return value;
+      return dt.toLocaleString();
+    }
+
+    function setStatus(ok, msg) {
+      statusEl.innerHTML = `<span class="${ok ? "ok" : "bad"}">[${ok ? "PASS" : "FAIL"}]</span> ${msg}`;
+    }
+
+    async function loadUsers() {
+      const res = await fetch("/users?limit=80&source=yelp");
+      const data = await res.json();
+      usersEl.innerHTML = "";
+      (data.users || []).forEach((u) => {
+        const opt = document.createElement("option");
+        opt.value = u;
+        opt.textContent = u;
+        usersEl.appendChild(opt);
+      });
+      if (usersEl.value) userEl.value = usersEl.value;
+      setStatus(true, `loaded ${data.users.length} sample users`);
+    }
+
+    async function loadProfileAndActivity() {
+      const user_id = userEl.value.trim();
+      if (!user_id) return setStatus(false, "user_id is required");
+
+      const [profileRes, actRes] = await Promise.all([
+        fetch(`/users/${encodeURIComponent(user_id)}/profile`),
+        fetch(`/users/${encodeURIComponent(user_id)}/activities?limit=30`)
+      ]);
+      const profile = await profileRes.json();
+      const acts = await actRes.json();
+
+      document.getElementById("profile").innerHTML = `
+        <div><strong>User ID:</strong> <span class="uid">${profile.user_id}</span></div>
+        <div><strong>Name:</strong> ${profile.name || "N/A"}</div>
+        <div><strong>Activity level:</strong> ${profile.activity_level || "N/A"}</div>
+        <div><strong>Interaction count:</strong> ${profile.interaction_count ?? 0}</div>
+        <div><strong>Avg given stars:</strong> ${fmtNum(profile.avg_given_stars, 2)}</div>
+        <div><strong>Positive rating ratio:</strong> ${fmtNum((profile.positive_rating_ratio ?? 0) * 100, 1)}%</div>
+        <div><strong>Top categories:</strong> ${fmtList(profile.top_categories)}</div>
+        <div><strong>Recent activity:</strong> ${fmtDate(profile.recent_activity_date)}</div>
+        <div><strong>Yelping since:</strong> ${profile.yelping_since || "N/A"}</div>
+        <div><strong>Profile review count:</strong> ${profile.review_count_profile ?? "N/A"}</div>
+        <div><strong>Profile avg stars:</strong> ${profile.average_stars_profile ?? "N/A"}</div>
+        <div class="explain">${profile.activity_summary || "No summary available."}</div>
+      `;
+
+      const rows = acts.activities || [];
+      document.getElementById("activities").innerHTML = rows.length ? rows.map((a) => `
+        <article class="activity">
+          <h3>${a.business_name || "(unknown business)"}</h3>
+          <div class="meta">${a.city || "-"} | rated ${fmtNum(a.stars, 1)}/5 | ${fmtDate(a.date)}</div>
+          <div class="meta">${a.categories || ""}</div>
+        </article>
+      `).join("") : "<div class='meta'>No activities for this user.</div>";
+
+      setStatus(true, `loaded profile + ${rows.length} activities`);
+    }
+
+    async function recommendExplain() {
+      const user_id = userEl.value.trim();
+      const k = Number(kEl.value || 10);
+      const algorithm = algoEl.value;
+      if (!user_id) return setStatus(false, "user_id is required");
+
+      const res = await fetch("/recommend", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({user_id, k, algorithm})
+      });
+      const data = await res.json();
+      if (!res.ok) return setStatus(false, data.detail || "recommend failed");
+
+      const rows = data.recommendations || [];
+      document.getElementById("recommendations").innerHTML = rows.length ? rows.map((r) => `
+        <article class="rec">
+          <h3>${r.name || "(unknown business)"}</h3>
+          <div class="meta">${r.city || "-"}, ${r.state || "-"} | score=${Number(r.score).toFixed(4)} | via=${r.algorithm}</div>
+          <div>
+            <span class="pill">activity: ${r.activity_level}</span>
+            <span class="pill">history: ${r.history_count}</span>
+            <span class="pill">content: ${Number(r.content_score).toFixed(3)}</span>
+            <span class="pill">cf_pred: ${Number(r.cf_pred_rating).toFixed(2)}</span>
+            <span class="pill">alpha: ${Number(r.hybrid_alpha).toFixed(3)}</span>
+            <span class="pill">prior: ${Number(r.prior_score).toFixed(3)}</span>
+          </div>
+          <div class="meta">${r.categories || ""}</div>
+          ${(r.category_overlap || []).length ? `<div class="meta"><strong>Category overlap:</strong> ${(r.category_overlap || []).join(", ")}</div>` : ""}
+          ${(r.reason_tags || []).map((x) => `<div class="meta">- ${x}</div>`).join("")}
+          <div class="explain">${r.explanation}</div>
+        </article>
+      `).join("") : "<div class='meta'>No recommendations.</div>";
+
+      setStatus(true, `recommended ${rows.length} businesses using ${algorithm}`);
+    }
+
+    async function runCheckpoint() {
+      const res = await fetch("/checkpoint");
+      const data = await res.json();
+      const html = (data.checks || []).map((c) =>
+        `<div><span class="${c.ok ? "ok" : "bad"}">[${c.ok ? "PASS" : "FAIL"}]</span> ${c.name} - ${c.detail}</div>`
+      ).join("");
+      document.getElementById("checkpoint").innerHTML = html;
+      setStatus(!!data.overall_ok, `checkpoint overall=${data.overall_ok}`);
+    }
+
+    document.getElementById("btnLoadUsers").addEventListener("click", loadUsers);
+    document.getElementById("btnProfile").addEventListener("click", loadProfileAndActivity);
+    document.getElementById("btnRecommend").addEventListener("click", recommendExplain);
+    document.getElementById("btnCheckpoint").addEventListener("click", runCheckpoint);
+    usersEl.addEventListener("change", () => { userEl.value = usersEl.value; });
+    loadUsers().catch(() => {});
+  </script>
+</body>
+</html>

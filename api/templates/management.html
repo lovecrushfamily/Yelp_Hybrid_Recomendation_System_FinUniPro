@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Management Dashboard</title>
+  <style>
+    :root {
+      --ink: #1f2b33;
+      --muted: #6a7a85;
+      --bg: #eef3f6;
+      --card: #fff;
+      --edge: #d7e2e9;
+      --accent: #0f6cbd;
+      --ok: #1e8e3e;
+      --bad: #d32f2f;
+      --warn: #ef6c00;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1200px 360px at 0% -30%, #d7ebff, transparent),
+        radial-gradient(1200px 360px at 100% -30%, #f7e5d2, transparent),
+        var(--bg);
+      color: var(--ink);
+    }
+    .topbar {
+      background: #122636;
+      color: #fff;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 4;
+    }
+    .topbar h1 {
+      margin: 0;
+      font-size: 1.08rem;
+    }
+    .topbar a {
+      color: #fff;
+      font-size: .84rem;
+      margin-left: 12px;
+    }
+    .wrap {
+      max-width: 1360px;
+      margin: 14px auto;
+      padding: 0 12px 24px;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+    @media (max-width: 1080px) {
+      .wrap { grid-template-columns: 1fr; }
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--edge);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+    }
+    .sub {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: .84rem;
+    }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(120px, 1fr));
+      gap: 8px;
+    }
+    .kpi {
+      border: 1px solid var(--edge);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fbfdff;
+    }
+    .kpi .label {
+      color: var(--muted);
+      font-size: .8rem;
+    }
+    .kpi .val {
+      margin-top: 3px;
+      font-weight: 700;
+      font-size: 1.06rem;
+    }
+    .chart {
+      margin-top: 10px;
+      border: 1px solid var(--edge);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fcfeff;
+      max-height: 380px;
+      overflow: auto;
+    }
+    .bar-row {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .bar-label {
+      font-size: .74rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .bar-stack {
+      display: grid;
+      gap: 3px;
+    }
+    .bar {
+      height: 8px;
+      border-radius: 999px;
+      background: #d9e4ee;
+      position: relative;
+      overflow: hidden;
+    }
+    .bar > span {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      border-radius: 999px;
+    }
+    .bar.local > span { background: #0f6cbd; }
+    .bar.recs > span { background: #ff8c42; }
+    .legend {
+      display: flex;
+      gap: 10px;
+      font-size: .77rem;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+    .dot {
+      width: 9px;
+      height: 9px;
+      display: inline-block;
+      border-radius: 99px;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    .dot.local { background: #0f6cbd; }
+    .dot.recs { background: #ff8c42; }
+    .list {
+      margin-top: 10px;
+      max-height: 180px;
+      overflow: auto;
+      border: 1px solid var(--edge);
+      border-radius: 8px;
+      padding: 7px;
+      background: #fff;
+    }
+    .row {
+      border-bottom: 1px solid #edf2f5;
+      padding: 5px 0;
+      font-size: .82rem;
+    }
+    .row:last-child { border-bottom: 0; }
+    label {
+      display: block;
+      margin: 8px 0 4px;
+      font-size: .82rem;
+      color: #4b5963;
+      font-weight: 700;
+    }
+    input, select, button {
+      width: 100%;
+      border: 1px solid var(--edge);
+      border-radius: 7px;
+      padding: 8px;
+      font-size: .9rem;
+    }
+    button {
+      border: 0;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    button.alt { background: #5a6b76; }
+    button.warn { background: var(--warn); }
+    .status {
+      margin-top: 8px;
+      min-height: 16px;
+      font-size: .84rem;
+    }
+    .ok { color: var(--ok); font-weight: 700; }
+    .bad { color: var(--bad); font-weight: 700; }
+    .mono {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: .78rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>Management Domain</h1>
+    <div>
+      <a href="/experience" target="_blank">Experience</a>
+      <a href="/basic" target="_blank">Experiment</a>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <section class="panel">
+      <h2>Monitoring</h2>
+      <p class="sub">Overall user activity and model/service runtime status.</p>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="chart">
+        <h2 style="margin:0 0 6px;font-size:.92rem;">User Activity (Last 24h)</h2>
+        <div id="activityChart"></div>
+        <div class="legend">
+          <span><span class="dot local"></span>Local interactions</span>
+          <span><span class="dot recs"></span>Recommendation requests</span>
+        </div>
+      </div>
+
+      <h2 style="margin-top:12px;">Active Users</h2>
+      <div id="activeUsers" class="list"></div>
+
+      <h2 style="margin-top:12px;">Model Metrics</h2>
+      <div id="modelMetrics" class="list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Control</h2>
+      <p class="sub">Global defaults and system actions.</p>
+
+      <label for="defaultK">Global Top-K</label>
+      <input id="defaultK" type="number" min="1" max="50" />
+
+      <label for="defaultAlgo">Global Algorithm</label>
+      <select id="defaultAlgo">
+        <option value="hybrid">Hybrid</option>
+        <option value="content">Content-only</option>
+        <option value="cf">Collaborative-only</option>
+      </select>
+
+      <button id="btnSaveConfig">Save Global Defaults</button>
+      <div id="configStatus" class="status"></div>
+
+      <hr />
+      <label for="datasetMode">Retrain Dataset Mode</label>
+      <select id="datasetMode">
+        <option value="yelp_only">yelp_only</option>
+        <option value="merged">merged</option>
+        <option value="local_only">local_only</option>
+      </select>
+
+      <label for="maxEvalUsers">Max Eval Users</label>
+      <input id="maxEvalUsers" type="number" min="50" max="5000" value="200" />
+
+      <button id="btnRetrain" class="warn">Retrain Model</button>
+      <button id="btnReload" class="alt">Reload Bundle (Redeploy Model)</button>
+      <button id="btnCheckpoint" class="alt">Run Checkpoint</button>
+      <div id="actionStatus" class="status"></div>
+
+      <h2 style="margin-top:12px;">Retrain Job</h2>
+      <div id="retrainJob" class="list"></div>
+      <div id="retrainOutput" class="list mono"></div>
+    </section>
+  </div>
+
+  <script>
+    function setStatus(id, ok, msg) {
+      document.getElementById(id).innerHTML = `<span class="${ok ? "ok" : "bad"}">[${ok ? "PASS" : "FAIL"}]</span> ${msg}`;
+    }
+
+    function fmt(v, d=2) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n.toFixed(d) : "N/A";
+    }
+
+    function renderKPIs(stats) {
+      const data = [
+        ["Active users", stats.active_users_count ?? 0],
+        ["Local users", stats.local_user_count ?? 0],
+        ["Rec requests", stats.runtime_metrics?.recommend_requests ?? 0],
+        ["Avg latency (ms)", fmt(stats.runtime_metrics?.average_recommend_latency_ms ?? 0, 2)],
+        ["Local interactions", stats.local_interactions?.count ?? 0],
+        ["Local avg stars", fmt(stats.local_interactions?.avg_stars ?? 0, 2)],
+      ];
+      document.getElementById("kpis").innerHTML = data.map(([k, v]) => `
+        <article class="kpi">
+          <div class="label">${k}</div>
+          <div class="val">${v}</div>
+        </article>
+      `).join("");
+    }
+
+    function renderActiveUsers(rows) {
+      const el = document.getElementById("activeUsers");
+      if (!rows || !rows.length) {
+        el.innerHTML = "<div class='row'>No active users in current window.</div>";
+        return;
+      }
+      el.innerHTML = rows.map((r) => `
+        <div class="row">
+          <strong>${r.user_id}</strong><br />
+          source=${r.source} | last_seen=${r.last_seen_utc}
+        </div>
+      `).join("");
+    }
+
+    function renderModelMetrics(metrics) {
+      const el = document.getElementById("modelMetrics");
+      const keys = Object.keys(metrics || {});
+      if (!keys.length) {
+        el.innerHTML = "<div class='row'>No metrics available.</div>";
+        return;
+      }
+      el.innerHTML = keys.map((k) => `<div class="row"><strong>${k}</strong>: ${metrics[k]}</div>`).join("");
+    }
+
+    function renderActivityChart(points) {
+      const el = document.getElementById("activityChart");
+      if (!points || !points.length) {
+        el.innerHTML = "<div class='row'>No activity points.</div>";
+        return;
+      }
+      const maxV = Math.max(...points.map((x) => Math.max(x.local_interactions || 0, x.recommend_calls || 0)), 1);
+      el.innerHTML = points.map((p) => {
+        const localW = ((p.local_interactions || 0) / maxV) * 100;
+        const recW = ((p.recommend_calls || 0) / maxV) * 100;
+        return `
+          <div class="bar-row">
+            <div class="bar-label">${p.label}</div>
+            <div class="bar-stack">
+              <div class="bar local"><span style="width:${localW}%"></span></div>
+              <div class="bar recs"><span style="width:${recW}%"></span></div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function loadStats() {
+      const res = await fetch("/admin/stats");
+      const data = await res.json();
+      if (!res.ok) return setStatus("actionStatus", false, data.detail || "cannot load stats");
+      renderKPIs(data);
+      renderActiveUsers(data.active_users_preview || []);
+      renderModelMetrics(data.model_metrics || {});
+
+      document.getElementById("defaultK").value = data.global_config?.default_k ?? 10;
+      document.getElementById("defaultAlgo").value = data.global_config?.default_algorithm ?? "hybrid";
+    }
+
+    async function loadActivity() {
+      const res = await fetch("/admin/activity?hours=24");
+      const data = await res.json();
+      if (res.ok) renderActivityChart(data.points || []);
+    }
+
+    async function loadRetrainJob() {
+      const res = await fetch("/admin/retrain/status");
+      const data = await res.json();
+      const jobEl = document.getElementById("retrainJob");
+      jobEl.innerHTML = `
+        <div class="row"><strong>running:</strong> ${data.running}</div>
+        <div class="row"><strong>last_status:</strong> ${data.last_status || "N/A"}</div>
+        <div class="row"><strong>started:</strong> ${data.last_started_utc || "N/A"}</div>
+        <div class="row"><strong>finished:</strong> ${data.last_finished_utc || "N/A"}</div>
+        <div class="row"><strong>error:</strong> ${data.last_error || "N/A"}</div>
+      `;
+      document.getElementById("retrainOutput").textContent = data.last_output_tail || "";
+    }
+
+    async function saveConfig() {
+      const default_k = Number(document.getElementById("defaultK").value || 10);
+      const default_algorithm = document.getElementById("defaultAlgo").value;
+      const res = await fetch("/admin/config", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({default_k, default_algorithm}),
+      });
+      const data = await res.json();
+      if (!res.ok) return setStatus("configStatus", false, data.detail || "save failed");
+      setStatus("configStatus", true, `saved defaults: top-k=${data.default_k}, algo=${data.default_algorithm}`);
+      await loadStats();
+    }
+
+    async function triggerRetrain() {
+      const dataset_mode = document.getElementById("datasetMode").value;
+      const max_eval_users = Number(document.getElementById("maxEvalUsers").value || 200);
+      const res = await fetch("/admin/retrain", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({dataset_mode, max_eval_users}),
+      });
+      const data = await res.json();
+      if (!res.ok) return setStatus("actionStatus", false, data.detail || "retrain failed");
+      setStatus("actionStatus", true, `retrain started mode=${dataset_mode}`);
+      await loadRetrainJob();
+    }
+
+    async function reloadBundle() {
+      const res = await fetch("/admin/reload", {method: "POST"});
+      const data = await res.json();
+      if (!res.ok) return setStatus("actionStatus", false, data.detail || "reload failed");
+      setStatus("actionStatus", true, `bundle reloaded businesses=${data.businesses}, users=${data.users}`);
+      await loadStats();
+    }
+
+    async function runCheckpoint() {
+      const res = await fetch("/checkpoint");
+      const data = await res.json();
+      if (!res.ok) return setStatus("actionStatus", false, "checkpoint failed");
+      setStatus("actionStatus", !!data.overall_ok, `checkpoint overall=${data.overall_ok}`);
+    }
+
+    document.getElementById("btnSaveConfig").addEventListener("click", saveConfig);
+    document.getElementById("btnRetrain").addEventListener("click", triggerRetrain);
+    document.getElementById("btnReload").addEventListener("click", reloadBundle);
+    document.getElementById("btnCheckpoint").addEventListener("click", runCheckpoint);
+
+    async function refreshAll() {
+      await Promise.all([loadStats(), loadActivity(), loadRetrainJob()]);
+    }
+
+    refreshAll().catch(() => setStatus("actionStatus", false, "initial load failed"));
+    setInterval(() => {
+      refreshAll().catch(() => {});
+    }, 8000);
+  </script>
+</body>
+</html>

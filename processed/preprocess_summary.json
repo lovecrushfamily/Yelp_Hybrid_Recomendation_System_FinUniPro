@@ -1,0 +1,31 @@
+{
+  "config": {
+    "business_path": "raw_data/yelp_academic_dataset_business.json",
+    "review_path": "raw_data/yelp_academic_dataset_review.json",
+    "tip_path": "raw_data/yelp_academic_dataset_tip.json",
+    "checkin_path": "raw_data/yelp_academic_dataset_checkin.json",
+    "out_dir": "processed",
+    "city": "Philadelphia",
+    "state": "PA",
+    "category_keyword": "Restaurants",
+    "min_business_reviews": 20,
+    "min_user_reviews": 3,
+    "min_item_reviews": 5,
+    "chunksize": 200000,
+    "max_review_chunks": 0,
+    "max_aux_chunks": 0,
+    "save_reviews": false
+  },
+  "n_businesses": 3896,
+  "n_reviews": 666323,
+  "n_interactions": 456203,
+  "paths": {
+    "businesses": "processed/businesses.pkl",
+    "interactions": "processed/interactions.pkl",
+    "reviews": null
+  },
+  "signals": {
+    "businesses_with_tip_count": 3803,
+    "businesses_with_checkin_count": 3874
+  }
+}
