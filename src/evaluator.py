@@ -71,10 +71,18 @@ def ndcg_at_k(recommended_ids: list[str], relevant_ids: set[str], k: int) -> flo
             dcg += 1.0 / np.log2(rank + 1.0)
 
     ideal_hits = min(k, len(relevant_ids))
-    idcg = sum(1.0 / np.log2(i + 1.0) for i in range(2, ideal_hits + 2))
+    idcg = sum(1.0 / np.log2(i + 1.0) for i in range(1, ideal_hits + 1))
     if idcg <= 0:
         return 0.0
     return dcg / idcg
+
+
+def hit_rate_at_k(recommended_ids: list[str], relevant_ids: set[str], k: int) -> float:
+    """Hit Rate@K — 1.0 if any relevant item appears in top-K, else 0.0."""
+    if k <= 0 or not recommended_ids or not relevant_ids:
+        return 0.0
+    top_k = recommended_ids[:k]
+    return 1.0 if any(item in relevant_ids for item in top_k) else 0.0
 
 
 def evaluate_hybrid_model(
@@ -91,13 +99,14 @@ def evaluate_hybrid_model(
     verbose: bool = False,
     relevance_threshold: float = 4.0,
 ) -> dict[str, float]:
-    """Evaluate hybrid recommender over users with temporal holdout."""
+    """Evaluate hybrid recommender over users with temporal holdout (full catalog)."""
     if train_df.empty or test_df.empty:
         return {
             "evaluated_users": 0,
             "precision@k": 0.0,
             "recall@k": 0.0,
             "ndcg@k": 0.0,
+            "hit_rate@k": 0.0,
             "coverage": 0.0,
         }
 
@@ -116,6 +125,7 @@ def evaluate_hybrid_model(
     prec_scores: list[float] = []
     rec_scores: list[float] = []
     ndcg_scores: list[float] = []
+    hr_scores: list[float] = []
     unique_recommended: set[str] = set()
 
     total_users = len(test_relevant)
@@ -143,6 +153,7 @@ def evaluate_hybrid_model(
         prec_scores.append(precision_at_k(recommended_ids, rel, k))
         rec_scores.append(recall_at_k(recommended_ids, rel, k))
         ndcg_scores.append(ndcg_at_k(recommended_ids, rel, k))
+        hr_scores.append(hit_rate_at_k(recommended_ids, rel, k))
 
         if verbose and progress_every > 0 and idx % progress_every == 0:
             print(f"[INFO] Eval progress {idx}/{total_users} users")
@@ -164,5 +175,125 @@ def evaluate_hybrid_model(
         "precision@k": float(np.mean(prec_scores)) if prec_scores else 0.0,
         "recall@k": float(np.mean(rec_scores)) if rec_scores else 0.0,
         "ndcg@k": float(np.mean(ndcg_scores)) if ndcg_scores else 0.0,
+        "hit_rate@k": float(np.mean(hr_scores)) if hr_scores else 0.0,
         "coverage": float(coverage),
+    }
+
+
+def evaluate_hybrid_model_sampled(
+    recommender,
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    user_col: str = "user_id",
+    item_col: str = "business_id",
+    rating_col: str = "stars",
+    time_col: str = "date",
+    k: int = 10,
+    n_neg_samples: int = 100,
+    max_users: int | None = None,
+    progress_every: int = 200,
+    verbose: bool = False,
+    relevance_threshold: float = 4.0,
+    random_seed: int = 42,
+) -> dict[str, float]:
+    """Evaluate with sampled negatives — much more interpretable metrics.
+
+    Instead of scoring against the full catalog (~33K items), for each user we:
+    1. Take the positive held-out item(s)
+    2. Sample ``n_neg_samples`` random items the user hasn't interacted with
+    3. Ask the recommender to rank only this small candidate set
+    4. Compute metrics on the restricted ranking
+
+    This is the standard protocol from Krichene & Rendle (2020) and is used
+    in most RecSys papers to produce interpretable metrics.
+    """
+    if train_df.empty or test_df.empty:
+        return {
+            "evaluated_users": 0,
+            "precision@k": 0.0,
+            "recall@k": 0.0,
+            "ndcg@k": 0.0,
+            "hit_rate@k": 0.0,
+            "n_neg_samples": float(n_neg_samples),
+        }
+
+    rng = np.random.RandomState(random_seed)
+
+    train_df = train_df.sort_values([user_col, time_col])
+    test_df = test_df.sort_values([user_col, time_col])
+
+    # Build item universe for negative sampling
+    item_universe_list: list[str] = []
+    if hasattr(recommender, "cf_engine") and getattr(recommender.cf_engine, "items", None):
+        item_universe_list = [str(x) for x in recommender.cf_engine.items]
+    elif hasattr(recommender, "content_engine") and getattr(
+        recommender.content_engine, "biz_ids", None
+    ):
+        item_universe_list = [str(x) for x in recommender.content_engine.biz_ids]
+    else:
+        item_universe_list = list(train_df[item_col].astype(str).unique())
+    item_universe_set = set(item_universe_list)
+
+    train_histories = train_df.groupby(user_col).agg(
+        history_items=(item_col, list),
+        history_ratings=(rating_col, list),
+    )
+    relevant_test = test_df[test_df[rating_col].astype(float) >= float(relevance_threshold)].copy()
+    test_relevant = relevant_test.groupby(user_col)[item_col].apply(lambda s: set(s.astype(str)))
+    if max_users is not None and max_users > 0:
+        test_relevant = test_relevant.iloc[:max_users]
+
+    prec_scores: list[float] = []
+    rec_scores: list[float] = []
+    ndcg_scores: list[float] = []
+    hr_scores: list[float] = []
+
+    total_users = len(test_relevant)
+    for idx, (user_id, relevant) in enumerate(test_relevant.items(), start=1):
+        if user_id not in train_histories.index:
+            continue
+        history_items = [str(x) for x in train_histories.loc[user_id, "history_items"]]
+        history_ratings = [float(x) for x in train_histories.loc[user_id, "history_ratings"]]
+        if not history_items:
+            continue
+
+        # Build candidate set: positive items + N random negatives
+        rel = {str(x) for x in relevant}
+        history_set = set(history_items)
+        exclude = history_set | rel
+        neg_pool = [x for x in item_universe_list if x not in exclude]
+        n_neg = min(n_neg_samples, len(neg_pool))
+        if n_neg == 0:
+            continue
+        neg_sampled = list(rng.choice(neg_pool, size=n_neg, replace=False))
+        candidate_set = list(rel) + neg_sampled
+
+        recs = recommender.recommend(
+            user_id=str(user_id),
+            k=k,
+            user_history_business_ids=history_items,
+            user_history_ratings=history_ratings,
+            candidate_business_ids=candidate_set,
+            exclude_history=False,
+        )
+        recommended_ids = [str(item_id) for item_id, _ in recs]
+        if not recommended_ids:
+            continue
+
+        prec_scores.append(precision_at_k(recommended_ids, rel, k))
+        rec_scores.append(recall_at_k(recommended_ids, rel, k))
+        ndcg_scores.append(ndcg_at_k(recommended_ids, rel, k))
+        hr_scores.append(hit_rate_at_k(recommended_ids, rel, k))
+
+        if verbose and progress_every > 0 and idx % progress_every == 0:
+            print(f"[INFO] Sampled eval progress {idx}/{total_users} users")
+
+    evaluated_users = len(prec_scores)
+    return {
+        "evaluated_users": float(evaluated_users),
+        "precision@k": float(np.mean(prec_scores)) if prec_scores else 0.0,
+        "recall@k": float(np.mean(rec_scores)) if rec_scores else 0.0,
+        "ndcg@k": float(np.mean(ndcg_scores)) if ndcg_scores else 0.0,
+        "hit_rate@k": float(np.mean(hr_scores)) if hr_scores else 0.0,
+        "n_neg_samples": float(n_neg_samples),
     }

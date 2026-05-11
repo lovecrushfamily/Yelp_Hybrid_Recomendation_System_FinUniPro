@@ -66,6 +66,13 @@ def parse_args() -> argparse.Namespace:
         default=300,
         help="Cap evaluation users for faster terminal/deploy checkpoints.",
     )
+    parser.add_argument(
+        "--n-neg-samples",
+        type=int,
+        default=100,
+        help="Number of negative samples per positive for sampled evaluation. "
+             "Set to 0 to skip sampled evaluation.",
+    )
     return parser.parse_args()
 
 
@@ -139,7 +146,29 @@ def main():
         verbose=verbose,
         relevance_threshold=args.relevance_threshold,
     )
-    _checkpoint("Evaluate", True, json.dumps(metrics))
+    _checkpoint("Evaluate (full-catalog)", True, json.dumps(metrics))
+
+    # Sampled evaluation for interpretable metrics
+    if args.n_neg_samples > 0:
+        if verbose:
+            print(f"[INFO] Running sampled evaluation (n_neg={args.n_neg_samples})...")
+        # Re-fit before sampled eval (evaluate() modifies the CF engine via train split)
+        pipeline.fit(businesses, interactions)
+        sampled_metrics = pipeline.evaluate_sampled(
+            interactions_df=interactions,
+            k=args.k,
+            n_neg_samples=args.n_neg_samples,
+            min_history=args.min_history,
+            n_test_items=args.n_test_items,
+            max_users=args.max_eval_users,
+            progress_every=args.progress_every,
+            verbose=verbose,
+            relevance_threshold=args.relevance_threshold,
+        )
+        _checkpoint("Evaluate (sampled)", True, json.dumps(sampled_metrics))
+        # Merge sampled metrics into bundle metrics with prefix
+        for key, val in sampled_metrics.items():
+            metrics[f"sampled_{key}"] = val
 
     # Refit on full interactions for final serving bundle.
     if verbose:

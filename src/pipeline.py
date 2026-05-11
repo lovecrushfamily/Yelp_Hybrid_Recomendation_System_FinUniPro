@@ -4,7 +4,7 @@ import pandas as pd
 
 from .collab_filter import CFEngine
 from .content_base import ContentEngine
-from .evaluator import evaluate_hybrid_model, temporal_leave_last_split
+from .evaluator import evaluate_hybrid_model, evaluate_hybrid_model_sampled, temporal_leave_last_split
 from .hybrid_engine import HybridRecommender
 from .preprocess import DataConfig, DataLoader
 
@@ -110,6 +110,7 @@ class YelpHybridPipeline:
                 "precision@k": 0.0,
                 "recall@k": 0.0,
                 "ndcg@k": 0.0,
+                "hit_rate@k": 0.0,
                 "coverage": 0.0,
             }
 
@@ -124,6 +125,7 @@ class YelpHybridPipeline:
                 "precision@k": 0.0,
                 "recall@k": 0.0,
                 "ndcg@k": 0.0,
+                "hit_rate@k": 0.0,
                 "coverage": 0.0,
             }
 
@@ -134,6 +136,59 @@ class YelpHybridPipeline:
             train_df,
             test_df,
             k=k,
+            max_users=max_users,
+            progress_every=progress_every,
+            verbose=verbose,
+            relevance_threshold=relevance_threshold,
+        )
+
+    def evaluate_sampled(
+        self,
+        interactions_df: pd.DataFrame | None = None,
+        k: int = 10,
+        n_neg_samples: int = 100,
+        min_history: int = 3,
+        n_test_items: int = 1,
+        max_users: int | None = None,
+        progress_every: int = 200,
+        verbose: bool = False,
+        relevance_threshold: float = 4.0,
+    ) -> dict[str, float]:
+        """Evaluate with sampled negatives for interpretable metrics."""
+        source_df = interactions_df if interactions_df is not None else self.interactions_df
+        if source_df is None or source_df.empty:
+            return {
+                "evaluated_users": 0.0,
+                "precision@k": 0.0,
+                "recall@k": 0.0,
+                "ndcg@k": 0.0,
+                "hit_rate@k": 0.0,
+                "n_neg_samples": float(n_neg_samples),
+            }
+
+        train_df, test_df = temporal_leave_last_split(
+            source_df,
+            min_history=min_history,
+            n_test_items=n_test_items,
+        )
+        if train_df.empty or test_df.empty:
+            return {
+                "evaluated_users": 0.0,
+                "precision@k": 0.0,
+                "recall@k": 0.0,
+                "ndcg@k": 0.0,
+                "hit_rate@k": 0.0,
+                "n_neg_samples": float(n_neg_samples),
+            }
+
+        self.cf_engine.fit(train_df)
+        self.interactions_df = train_df.copy()
+        return evaluate_hybrid_model_sampled(
+            self.hybrid,
+            train_df,
+            test_df,
+            k=k,
+            n_neg_samples=n_neg_samples,
             max_users=max_users,
             progress_every=progress_every,
             verbose=verbose,
