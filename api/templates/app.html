@@ -4,6 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Experience Feed</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css"
+    integrity="sha384-WBDoE6botnU+ntRohw0Fj1g/NHd7t7eoJLJOmxpmyyhocpF3jjPgOVeEp0/cKGXG"
+    crossorigin="anonymous" />
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js"
+    integrity="sha384-MRC9K9wDkDHBGcw0ZHB60RAPcgULsUX4+T7DvwFiaiJReixo/eGQiKB7KA/i6+W7"
+    crossorigin="anonymous"></script>
   <style>
     :root {
       --bg: #f5f6f7;
@@ -190,6 +196,37 @@
       color: #334155;
       word-break: break-all;
     }
+    .profile-pop .metric-pack {
+      margin-top: 8px;
+      display: grid;
+      gap: 7px;
+    }
+    .profile-pop .metric-bar {
+      display: grid;
+      gap: 4px;
+    }
+    .profile-pop .metric-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: .8rem;
+      color: #475569;
+    }
+    .profile-pop .metric-head strong {
+      color: #172433;
+    }
+    .profile-pop .metric-track {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: #ecf1f6;
+      border: 1px solid #dde5ee;
+      overflow: hidden;
+    }
+    .profile-pop .metric-fill {
+      height: 100%;
+      border-radius: 999px;
+    }
     .links {
       margin-top: 8px;
       font-size: .82rem;
@@ -200,6 +237,82 @@
     .links a { color: #0f5aa9; }
     #searchSection.hidden { display: none; }
     #feedSentinel { height: 2px; }
+    
+    /* Map modal styles */
+    .map-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .map-modal.open {
+      display: flex;
+    }
+    .map-modal-content {
+      width: 90vw;
+      height: 90vh;
+      max-width: 1200px;
+      max-height: 800px;
+      background: #fff;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .map-modal-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--edge);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card);
+    }
+    .map-modal-header h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      color: var(--ink);
+      flex: 1;
+    }
+    .map-modal-header .meta {
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-right: 16px;
+    }
+    .map-modal-close {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    .map-modal-close:hover {
+      background: #b01d1d;
+    }
+    .map-container {
+      flex: 1;
+      position: relative;
+    }
+    #businessMap {
+      width: 100%;
+      height: 100%;
+    }
+    .map-info-popup {
+      background: #fff;
+      border: 1px solid var(--edge);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.9rem;
+    }
   </style>
 </head>
 <body>
@@ -233,6 +346,25 @@
     </div>
   </aside>
 
+  <!-- Map Modal -->
+  <div id="mapModal" class="map-modal">
+    <div class="map-modal-content">
+      <div class="map-modal-header">
+        <div>
+          <h2 id="mapModalTitle">Business Location</h2>
+          <div id="mapModalDetails" style="margin-top: 8px; font-size: 0.9rem; color: var(--muted);"></div>
+        </div>
+        <button class="map-modal-close" onclick="closeMapModal()">Close</button>
+      </div>
+      <div class="map-container">
+        <div id="businessMap"></div>
+      </div>
+      <div id="mapPopupInfo" style="position: absolute; bottom: 16px; left: 16px; background: #fff; border: 1px solid var(--edge); border-radius: 8px; padding: 12px; max-width: 280px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 999; display: none;">
+        <div id="mapPopupContent"></div>
+      </div>
+    </div>
+  </div>
+
   <main class="container">
     <section id="searchSection" class="section hidden">
       <h2>Search Results (1-20)</h2>
@@ -261,6 +393,7 @@
     let feedHasMore = true;
     let feedLoading = false;
     let feedTotal = 0;
+    const FEED_MAX_ITEMS = 100;
 
     const statusEl = document.getElementById("status");
     const feedGrid = document.getElementById("feedGrid");
@@ -268,6 +401,51 @@
 
     function setStatus(ok, msg) {
       statusEl.innerHTML = `<span class="${ok ? "ok" : "bad"}">[${ok ? "PASS" : "FAIL"}]</span> ${msg}`;
+    }
+
+    function toNum(v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function metricRatio(value, maxRef = 100, useLog = false) {
+      const n = toNum(value);
+      if (n === null || n < 0) return 0;
+      if (useLog) {
+        return Math.max(0, Math.min(1, Math.log1p(n) / Math.log1p(Math.max(maxRef, 1))));
+      }
+      return Math.max(0, Math.min(1, n / Math.max(maxRef, 1)));
+    }
+
+    function metricColor(ratio) {
+      const hue = 6 + (ratio * 116);
+      return `hsl(${hue} 72% 42%)`;
+    }
+
+    function metricBar(label, value, opts = {}) {
+      const {
+        decimals = 0,
+        suffix = "",
+        maxRef = 100,
+        useLog = false
+      } = opts;
+      const n = toNum(value);
+      if (n === null) {
+        return `
+          <div class="metric-bar">
+            <div class="metric-head"><span>${label}</span><strong>N/A</strong></div>
+            <div class="metric-track"><div class="metric-fill" style="width:0%;background:#d7dee8;"></div></div>
+          </div>
+        `;
+      }
+      const ratio = metricRatio(n, maxRef, useLog);
+      const display = decimals > 0 ? n.toFixed(decimals) : Math.round(n).toLocaleString();
+      return `
+        <div class="metric-bar">
+          <div class="metric-head"><span>${label}</span><strong>${display}${suffix}</strong></div>
+          <div class="metric-track"><div class="metric-fill" style="width:${Math.max(6, ratio * 100)}%;background:${metricColor(ratio)};"></div></div>
+        </div>
+      `;
     }
 
     function nearBottom(buffer = 320) {
@@ -289,11 +467,21 @@
       const res = await fetch("/ux/me", {headers: {"X-UX-Token": uxToken}});
       const data = await res.json();
       if (!res.ok) return setStatus(false, data.detail || "profile failed");
+      const metricPack = [
+        metricBar("Interactions", data.interaction_count, {maxRef: 100, useLog: true}),
+        metricBar("Positive ratio", (data.positive_rating_ratio ?? 0) * 100, {decimals: 1, maxRef: 100, suffix: "%"}),
+        metricBar("Profile avg stars", data.average_stars_profile, {decimals: 2, maxRef: 5}),
+        metricBar("Elite years", data.elite_year_count, {maxRef: 10}),
+        metricBar("Friends", data.friends_count, {maxRef: 2000, useLog: true}),
+        metricBar("Fans", data.fans, {maxRef: 500, useLog: true})
+      ].join("");
       document.getElementById("profileBox").innerHTML = `
         <div class="row"><strong>User ID:</strong> ${data.user_id || uxUserId}</div>
+        <div class="row"><strong>Name:</strong> ${data.name || "N/A"}</div>
+        <div class="row"><strong>Yelping since:</strong> ${data.yelping_since || "N/A"}</div>
         <div class="row"><strong>Activity:</strong> ${data.activity_level || "N/A"}</div>
-        <div class="row"><strong>Interactions:</strong> ${data.interaction_count ?? 0}</div>
         <div class="row"><strong>Top categories:</strong> ${(data.top_categories || []).slice(0, 5).join(", ") || "N/A"}</div>
+        <div class="metric-pack">${metricPack}</div>
       `;
     }
 
@@ -321,7 +509,15 @@
         feedGrid.innerHTML = "";
       }
 
-      const url = `/ux/recommend?offset=${feedOffset}&limit=${feedLimit}${refresh ? "&refresh=true" : ""}`;
+      if (feedOffset >= FEED_MAX_ITEMS) {
+        feedHasMore = false;
+        feedLoading = false;
+        feedStatus.textContent = `Feed capped at ${FEED_MAX_ITEMS} businesses.`;
+        return;
+      }
+
+      const requestLimit = Math.min(feedLimit, FEED_MAX_ITEMS - feedOffset);
+      const url = `/ux/recommend?offset=${feedOffset}&limit=${requestLimit}${refresh ? "&refresh=true" : ""}`;
       const res = await fetch(url, {headers: {"X-UX-Token": uxToken}});
       const data = await res.json();
       if (!res.ok) {
@@ -330,14 +526,20 @@
       }
 
       const rows = data.recommendations || [];
+      console.log("Fetched recommendations:", rows);
+      if (rows.length > 0) {
+        console.log("First recommendation sample:", rows[0]);
+      }
       feedGrid.insertAdjacentHTML("beforeend", renderCards(rows));
-      feedOffset = Number(data.next_offset || 0);
-      feedHasMore = !!data.has_more;
-      feedTotal = Number(data.total || 0);
+      feedOffset = Math.min(Number(data.next_offset || 0), FEED_MAX_ITEMS);
+      feedHasMore = !!data.has_more && feedOffset < FEED_MAX_ITEMS;
+      feedTotal = Math.min(Number(data.total || 0), FEED_MAX_ITEMS);
       feedLoading = false;
 
       if (feedHasMore) {
         feedStatus.textContent = `Loaded ${feedOffset}/${feedTotal}. Scroll for more...`;
+      } else if (feedOffset >= FEED_MAX_ITEMS) {
+        feedStatus.textContent = `Feed capped at ${FEED_MAX_ITEMS} businesses.`;
       } else {
         feedStatus.textContent = `End of feed. Total shown: ${feedTotal}`;
       }
@@ -384,6 +586,107 @@
       localStorage.removeItem("ux_user_id");
       window.location.href = "/experience";
     }
+
+    // Map modal functions
+    let currentMap = null;
+
+    function showBusinessMap(business) {
+      console.log("Selected restaurant:", business);
+      
+      const lat = business.latitude;
+      const lon = business.longitude;
+      const name = business.name || "Business";
+      const city = business.city || "";
+      const state = business.state || "";
+      const stars = business.stars ?? "N/A";
+      const reviewCount = business.review_count ?? 0;
+      const address = business.address || "No address provided";
+      const isOpen = business.is_open;
+
+      if (!lat || !lon) {
+        setStatus(false, `Location data not available for ${name}`);
+        return;
+      }
+
+      // Update header with basic info
+      document.getElementById("mapModalTitle").textContent = name;
+      document.getElementById("mapModalDetails").innerHTML = `
+        <strong>📍 ${city}, ${state}</strong> | ⭐ ${stars} | ${reviewCount} reviews
+      `;
+
+      // Open modal
+      document.getElementById("mapModal").classList.add("open");
+
+      // Initialize or update map
+      setTimeout(() => {
+        if (currentMap) {
+          currentMap.remove();
+        }
+
+        currentMap = L.map("businessMap").setView([lat, lon], 16);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "&copy; OpenStreetMap contributors",
+          maxZoom: 19
+        }).addTo(currentMap);
+
+        // Add marker with popup
+        const statusIcon = isOpen === 1 ? "🟢" : isOpen === 0 ? "🔴" : "⚫";
+        const statusText = isOpen === 1 ? "Open" : isOpen === 0 ? "Closed" : "Unknown";
+
+        const popupHTML = `
+          <div style="font-size: 0.95rem; color: #111;">
+            <div style="font-weight: 700; margin-bottom: 6px;">${name}</div>
+            <div style="color: #666; margin-bottom: 4px;">📍 ${address}</div>
+            <div style="color: #666; margin-bottom: 4px;">🧭 Lat: ${lat.toFixed(6)}, Lon: ${lon.toFixed(6)}</div>
+            <div style="color: #666; margin-bottom: 4px;">⭐ ${stars} (${reviewCount} reviews)</div>
+            <div style="color: #666;">${statusIcon} ${statusText}</div>
+          </div>
+        `;
+
+        const marker = L.marker([lat, lon])
+          .addTo(currentMap)
+          .bindPopup(popupHTML, {maxWidth: 300})
+          .openPopup();
+
+        // Also show info box on bottom-left
+        const infoBox = `
+          <div style="font-weight: 700; margin-bottom: 8px; font-size: 1rem;">${name}</div>
+          <div style="margin-bottom: 4px; color: #666; font-size: 0.9rem;"><strong>Address:</strong> ${address}</div>
+          <div style="margin-bottom: 4px; color: #666; font-size: 0.9rem;"><strong>Coordinates:</strong></div>
+          <div style="margin-bottom: 4px; color: #666; font-size: 0.9rem;">Lat: ${lat.toFixed(6)}</div>
+          <div style="margin-bottom: 4px; color: #666; font-size: 0.9rem;">Lon: ${lon.toFixed(6)}</div>
+          <div style="margin-bottom: 4px; color: #666; font-size: 0.9rem;"><strong>Rating:</strong> ⭐ ${stars}</div>
+          <div style="color: #666; font-size: 0.9rem;"><strong>Status:</strong> ${statusIcon} ${statusText}</div>
+        `;
+        document.getElementById("mapPopupContent").innerHTML = infoBox;
+        document.getElementById("mapPopupInfo").style.display = "block";
+
+        // Fix map size after opening
+        currentMap.invalidateSize();
+      }, 50);
+    }
+
+    function closeMapModal() {
+      document.getElementById("mapModal").classList.remove("open");
+      if (currentMap) {
+        currentMap.remove();
+        currentMap = null;
+      }
+    }
+
+    // Close map modal on background click
+    document.getElementById("mapModal").addEventListener("click", (e) => {
+      if (e.target.id === "mapModal") {
+        closeMapModal();
+      }
+    });
+
+    // Close map on Escape key
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && document.getElementById("mapModal").classList.contains("open")) {
+        closeMapModal();
+      }
+    });
 
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {

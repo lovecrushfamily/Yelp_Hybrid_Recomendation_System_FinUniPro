@@ -5,6 +5,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+import time
 
 import numpy as np
 import pandas as pd
@@ -36,17 +37,28 @@ def _count_tips(
     business_ids: set[str],
     chunksize: int = 200_000,
     max_chunks: int | None = None,
+    verbose: bool = False,
+    progress_every: int = 5,
 ) -> pd.Series:
     """Count tips per business from yelp_academic_dataset_tip.json."""
     counts: dict[str, int] = {}
+    total_rows = 0
+    start_ts = time.perf_counter()
     for idx, chunk in enumerate(pd.read_json(tip_path, lines=True, chunksize=chunksize), start=1):
+        total_rows += len(chunk)
         filtered = chunk[chunk["business_id"].isin(business_ids)]
         if not filtered.empty:
             vc = filtered["business_id"].astype(str).value_counts()
             for business_id, n in vc.items():
                 counts[business_id] = counts.get(business_id, 0) + int(n)
+        if verbose and progress_every > 0 and idx % progress_every == 0:
+            elapsed = time.perf_counter() - start_ts
+            print(f"[INFO] Tip chunks={idx} rows={total_rows} elapsed_sec={elapsed:.1f}")
         if max_chunks is not None and idx >= max_chunks:
             break
+    if verbose:
+        elapsed = time.perf_counter() - start_ts
+        print(f"[INFO] Tip scan done chunks={idx} rows={total_rows} elapsed_sec={elapsed:.1f}")
     return pd.Series(counts, name="tip_count", dtype=float)
 
 
@@ -55,10 +67,15 @@ def _count_checkins(
     business_ids: set[str],
     chunksize: int = 200_000,
     max_chunks: int | None = None,
+    verbose: bool = False,
+    progress_every: int = 5,
 ) -> pd.Series:
     """Count check-in events per business from yelp_academic_dataset_checkin.json."""
     counts: dict[str, int] = {}
+    total_rows = 0
+    start_ts = time.perf_counter()
     for idx, chunk in enumerate(pd.read_json(checkin_path, lines=True, chunksize=chunksize), start=1):
+        total_rows += len(chunk)
         filtered = chunk[chunk["business_id"].isin(business_ids)]
         if not filtered.empty:
             filtered = filtered[["business_id", "date"]].copy()
@@ -69,8 +86,14 @@ def _count_checkins(
             grouped = filtered.groupby("business_id")["checkin_count"].sum()
             for business_id, n in grouped.items():
                 counts[str(business_id)] = counts.get(str(business_id), 0) + int(n)
+        if verbose and progress_every > 0 and idx % progress_every == 0:
+            elapsed = time.perf_counter() - start_ts
+            print(f"[INFO] Checkin chunks={idx} rows={total_rows} elapsed_sec={elapsed:.1f}")
         if max_chunks is not None and idx >= max_chunks:
             break
+    if verbose:
+        elapsed = time.perf_counter() - start_ts
+        print(f"[INFO] Checkin scan done chunks={idx} rows={total_rows} elapsed_sec={elapsed:.1f}")
     return pd.Series(counts, name="checkin_count", dtype=float)
 
 
@@ -81,8 +104,14 @@ def _add_business_priors(
 ) -> pd.DataFrame:
     """Create normalized popularity prior from Yelp auxiliary signals."""
     df = businesses.copy()
-    df["tip_count"] = 0.0
-    df["checkin_count"] = 0.0
+    if "tip_count" in df.columns:
+        df["tip_count"] = pd.to_numeric(df["tip_count"], errors="coerce").fillna(0.0)
+    else:
+        df["tip_count"] = 0.0
+    if "checkin_count" in df.columns:
+        df["checkin_count"] = pd.to_numeric(df["checkin_count"], errors="coerce").fillna(0.0)
+    else:
+        df["checkin_count"] = 0.0
 
     if tip_counts is not None and not tip_counts.empty:
         df = df.merge(
@@ -138,9 +167,28 @@ def parse_args() -> argparse.Namespace:
         "--checkin-path",
         default="raw_data/yelp_academic_dataset_checkin.json",
     )
+    parser.add_argument("--data-dir", default="data")
+    parser.add_argument(
+        "--input-format",
+        choices=["auto", "json", "parquet"],
+        default="auto",
+        help="Prefer parquet exports in data/ when available, otherwise fallback to raw JSON.",
+    )
     parser.add_argument("--out-dir", default="processed")
-    parser.add_argument("--city", default="Philadelphia")
+    parser.add_argument("--city", default="")
     parser.add_argument("--state", default="")
+    parser.add_argument(
+        "--usa-only",
+        action="store_true",
+        default=True,
+        help="Limit businesses to U.S. state codes.",
+    )
+    parser.add_argument(
+        "--no-usa-only",
+        action="store_false",
+        dest="usa_only",
+        help="Disable U.S.-only filter.",
+    )
     parser.add_argument("--category-keyword", default="Restaurants")
     parser.add_argument("--min-business-reviews", type=int, default=20)
     parser.add_argument("--min-user-reviews", type=int, default=3)
@@ -149,6 +197,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-review-chunks", type=int, default=0)
     parser.add_argument("--max-aux-chunks", type=int, default=0)
     parser.add_argument("--save-reviews", action="store_true")
+    parser.add_argument("--progress-every", type=int, default=5)
+    parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
 
 
@@ -160,6 +210,7 @@ def main():
     max_review_chunks = args.max_review_chunks if args.max_review_chunks > 0 else None
     max_aux_chunks = args.max_aux_chunks if args.max_aux_chunks > 0 else None
 
+    verbose = not args.quiet
     cfg = DataConfig(
         min_business_reviews=args.min_business_reviews,
         min_user_reviews=args.min_user_reviews,
@@ -167,12 +218,22 @@ def main():
         category_keyword=args.category_keyword,
         city=args.city or None,
         state=args.state or None,
+        usa_only=args.usa_only,
         chunksize=args.chunksize,
         max_review_chunks=max_review_chunks,
+        verbose=verbose,
+        progress_every=args.progress_every,
     )
 
-    loader = DataLoader(args.business_path, args.review_path)
+    loader = DataLoader(
+        args.business_path,
+        args.review_path,
+        source_format=args.input_format,
+        data_dir=args.data_dir,
+    )
     businesses, reviews, interactions = loader.run(cfg)
+    resolved_source = loader.resolve_source_format()
+    _checkpoint("Input Source", True, f"source_format={resolved_source}")
     _checkpoint(
         "Preprocess Core",
         not businesses.empty and not interactions.empty,
@@ -183,21 +244,45 @@ def main():
 
     tip_counts = pd.Series(dtype=float)
     checkin_counts = pd.Series(dtype=float)
-    if Path(args.tip_path).exists():
-        tip_counts = _count_tips(args.tip_path, business_id_set, chunksize=args.chunksize, max_chunks=max_aux_chunks)
-        _checkpoint("Tip Signals", True, f"businesses_with_tips={len(tip_counts)}")
+    if "popularity_prior" in businesses.columns and businesses["popularity_prior"].notna().any():
+        tip_count_present = int((pd.to_numeric(businesses.get("tip_count", 0), errors="coerce").fillna(0) > 0).sum()) if "tip_count" in businesses.columns else 0
+        checkin_count_present = int((pd.to_numeric(businesses.get("checkin_count", 0), errors="coerce").fillna(0) > 0).sum()) if "checkin_count" in businesses.columns else 0
+        _checkpoint("Tip Signals", True, f"loaded_from={resolved_source}, businesses_with_tips={tip_count_present}")
+        _checkpoint("Check-in Signals", True, f"loaded_from={resolved_source}, businesses_with_checkins={checkin_count_present}")
+    elif resolved_source == "parquet" and {"tip_count", "checkin_count"}.issubset(businesses.columns):
+        businesses = _add_business_priors(businesses)
+        tip_count_present = int((businesses["tip_count"] > 0).sum())
+        checkin_count_present = int((businesses["checkin_count"] > 0).sum())
+        _checkpoint("Tip Signals", True, f"computed_from=parquet, businesses_with_tips={tip_count_present}")
+        _checkpoint("Check-in Signals", True, f"computed_from=parquet, businesses_with_checkins={checkin_count_present}")
     else:
-        _checkpoint("Tip Signals", False, f"missing_file={args.tip_path}")
+        if Path(args.tip_path).exists():
+            tip_counts = _count_tips(
+                args.tip_path,
+                business_id_set,
+                chunksize=args.chunksize,
+                max_chunks=max_aux_chunks,
+                verbose=verbose,
+                progress_every=args.progress_every,
+            )
+            _checkpoint("Tip Signals", True, f"businesses_with_tips={len(tip_counts)}")
+        else:
+            _checkpoint("Tip Signals", False, f"missing_file={args.tip_path}")
 
-    if Path(args.checkin_path).exists():
-        checkin_counts = _count_checkins(
-            args.checkin_path, business_id_set, chunksize=args.chunksize, max_chunks=max_aux_chunks
-        )
-        _checkpoint("Check-in Signals", True, f"businesses_with_checkins={len(checkin_counts)}")
-    else:
-        _checkpoint("Check-in Signals", False, f"missing_file={args.checkin_path}")
+        if Path(args.checkin_path).exists():
+            checkin_counts = _count_checkins(
+                args.checkin_path,
+                business_id_set,
+                chunksize=args.chunksize,
+                max_chunks=max_aux_chunks,
+                verbose=verbose,
+                progress_every=args.progress_every,
+            )
+            _checkpoint("Check-in Signals", True, f"businesses_with_checkins={len(checkin_counts)}")
+        else:
+            _checkpoint("Check-in Signals", False, f"missing_file={args.checkin_path}")
 
-    businesses = _add_business_priors(businesses, tip_counts=tip_counts, checkin_counts=checkin_counts)
+        businesses = _add_business_priors(businesses, tip_counts=tip_counts, checkin_counts=checkin_counts)
 
     businesses_path = out_dir / "businesses.pkl"
     interactions_path = out_dir / "interactions.pkl"

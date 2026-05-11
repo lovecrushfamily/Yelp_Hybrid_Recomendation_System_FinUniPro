@@ -5,6 +5,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+import time
 
 import pandas as pd
 
@@ -15,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.local_user_store import LocalUserStore
 from src.model_bundle import (
     ModelBundle,
-    build_user_events,
+    build_user_events_for_subset,
     build_user_histories,
     save_model_bundle,
 )
@@ -34,11 +35,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--processed-dir", default="processed")
     parser.add_argument("--artifact-dir", default="artifacts")
     parser.add_argument("--local-data-dir", default="local_data")
-    parser.add_argument("--user-path", default="raw_data/yelp_academic_dataset_user.json")
-    parser.add_argument("--profile-chunksize", type=int, default=200_000)
-    parser.add_argument("--max-user-chunks", type=int, default=0)
     parser.add_argument("--max-events-per-user", type=int, default=200)
-    parser.add_argument("--skip-user-profiles", action="store_true")
+    parser.add_argument(
+        "--bundle-event-users",
+        type=int,
+        default=300,
+        help="Persist readable activity logs only for a small demo subset of users.",
+    )
     parser.add_argument(
         "--dataset-mode",
         choices=["yelp_only", "merged", "local_only"],
@@ -48,7 +51,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--k", type=int, default=10)
     parser.add_argument("--min-history", type=int, default=3)
     parser.add_argument("--n-test-items", type=int, default=1)
+    parser.add_argument(
+        "--relevance-threshold",
+        type=float,
+        default=4.0,
+        help="Only held-out ratings >= threshold are treated as relevant in offline ranking metrics.",
+    )
     parser.add_argument("--prior-weight", type=float, default=0.1)
+    parser.add_argument("--progress-every", type=int, default=200)
+    parser.add_argument("--quiet", action="store_true")
     parser.add_argument(
         "--max-eval-users",
         type=int,
@@ -58,52 +69,9 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def extract_user_profiles(
-    user_path: str,
-    target_user_ids: set[str],
-    chunksize: int = 200_000,
-    max_chunks: int | None = None,
-) -> dict[str, dict]:
-    """Extract compact user profiles for explainability demo."""
-    if not Path(user_path).exists() or not target_user_ids:
-        return {}
-    profiles: dict[str, dict] = {}
-    cols = [
-        "user_id",
-        "name",
-        "review_count",
-        "yelping_since",
-        "average_stars",
-        "fans",
-        "useful",
-        "funny",
-        "cool",
-        "elite",
-    ]
-    for idx, chunk in enumerate(pd.read_json(user_path, lines=True, chunksize=chunksize), start=1):
-        filtered = chunk[chunk["user_id"].astype(str).isin(target_user_ids)]
-        if not filtered.empty:
-            for row in filtered[cols].itertuples(index=False):
-                profiles[str(row.user_id)] = {
-                    "name": row.name,
-                    "review_count_profile": int(row.review_count),
-                    "yelping_since": str(row.yelping_since),
-                    "average_stars_profile": float(row.average_stars),
-                    "fans": int(row.fans),
-                    "useful_votes": int(row.useful),
-                    "funny_votes": int(row.funny),
-                    "cool_votes": int(row.cool),
-                    "elite": str(row.elite) if row.elite is not None else "",
-                }
-        if len(profiles) >= len(target_user_ids):
-            break
-        if max_chunks is not None and idx >= max_chunks:
-            break
-    return profiles
-
-
 def main():
     args = parse_args()
+    verbose = not args.quiet
     processed_dir = Path(args.processed_dir)
     businesses_path = processed_dir / "businesses.pkl"
     interactions_path = processed_dir / "interactions.pkl"
@@ -151,20 +119,35 @@ def main():
     )
 
     pipeline = YelpHybridPipeline(prior_weight=args.prior_weight)
+    if verbose:
+        print("[INFO] Fitting content + collaborative models...")
+    t0 = time.perf_counter()
     pipeline.fit(businesses, interactions)
+    if verbose:
+        print(f"[INFO] Fit completed in {time.perf_counter() - t0:.1f}s")
     _checkpoint("Train Models", True, "content + collaborative + hybrid fitted")
 
+    if verbose:
+        print("[INFO] Evaluating hybrid model...")
     metrics = pipeline.evaluate(
         interactions_df=interactions,
         k=args.k,
         min_history=args.min_history,
         n_test_items=args.n_test_items,
         max_users=args.max_eval_users,
+        progress_every=args.progress_every,
+        verbose=verbose,
+        relevance_threshold=args.relevance_threshold,
     )
     _checkpoint("Evaluate", True, json.dumps(metrics))
 
     # Refit on full interactions for final serving bundle.
+    if verbose:
+        print("[INFO] Refit on full interactions for serving bundle...")
+    t1 = time.perf_counter()
     pipeline.fit(businesses, interactions)
+    if verbose:
+        print(f"[INFO] Refit completed in {time.perf_counter() - t1:.1f}s")
 
     business_index = businesses[
         [
@@ -183,17 +166,17 @@ def main():
         ]
     ].copy()
     user_histories = build_user_histories(interactions)
-    user_events = build_user_events(interactions, max_events_per_user=args.max_events_per_user)
-    max_user_chunks = args.max_user_chunks if args.max_user_chunks > 0 else None
-    user_profiles = {}
-    if not args.skip_user_profiles:
-        user_profiles = extract_user_profiles(
-            user_path=args.user_path,
-            target_user_ids=set(user_histories.keys()),
-            chunksize=args.profile_chunksize,
-            max_chunks=max_user_chunks,
-        )
-    _checkpoint("User Profiles", True, f"profiles={len(user_profiles)}, events={len(user_events)}")
+    local_event_users = []
+    if not local_interactions.empty:
+        local_event_users = local_interactions["user_id"].astype(str).drop_duplicates().tolist()
+    demo_event_users = list(user_histories.keys())[: max(0, args.bundle_event_users)]
+    event_user_ids = set(local_event_users + demo_event_users)
+    user_events = build_user_events_for_subset(
+        interactions,
+        user_ids=event_user_ids,
+        max_events_per_user=args.max_events_per_user,
+    )
+    _checkpoint("Bundle Events", True, f"event_users={len(user_events)}, histories={len(user_histories)}")
 
     bundle = ModelBundle(
         content_engine=pipeline.content_engine,
@@ -202,7 +185,6 @@ def main():
         business_index=business_index,
         user_histories=user_histories,
         user_events=user_events,
-        user_profiles=user_profiles,
         metrics=metrics,
     )
     bundle_path = save_model_bundle(bundle, args.artifact_dir)

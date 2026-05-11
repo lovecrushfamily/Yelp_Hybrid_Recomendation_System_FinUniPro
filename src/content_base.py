@@ -110,6 +110,7 @@ class ContentEngine:
         self,
         history_business_ids: list[str],
         candidate_business_ids: list[str] | None = None,
+        history_weights: list[float] | None = None,
         k: int = 10,
         exclude_history: bool = True,
     ) -> list[tuple[str, float]]:
@@ -117,6 +118,7 @@ class ContentEngine:
         scores = self.score_candidates_for_history(
             history_business_ids=history_business_ids,
             candidate_business_ids=candidate_business_ids,
+            history_weights=history_weights,
         )
         if not scores:
             return []

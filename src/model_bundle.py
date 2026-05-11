@@ -24,7 +24,6 @@ class ModelBundle:
     business_index: pd.DataFrame
     user_histories: dict[str, tuple[list[str], list[float]]]
     user_events: dict[str, list[dict]] = field(default_factory=dict)
-    user_profiles: dict[str, dict] = field(default_factory=dict)
     metrics: dict[str, float] = field(default_factory=dict)
     created_at_utc: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
@@ -106,7 +105,8 @@ class ModelBundle:
 
     def get_user_profile(self, user_id: str) -> dict:
         user_id = str(user_id)
-        profile = dict(self.user_profiles.get(user_id, {}))
+        legacy_profiles = getattr(self, "user_profiles", {})
+        profile = dict(legacy_profiles.get(user_id, {})) if isinstance(legacy_profiles, dict) else {}
         hist_items, hist_ratings = self.user_histories.get(user_id, ([], []))
         interaction_count = len(hist_items)
         avg_given = float(sum(hist_ratings) / len(hist_ratings)) if hist_ratings else 0.0
@@ -241,19 +241,12 @@ class ModelBundle:
 
         candidate_ids_for_explain: list[str] = []
         content_scores: dict[str, float] = {}
-        if hist_ids:
-            candidate_ids_for_explain = list(self._business_map.keys()) if len(self._business_map) <= 4000 else []
-            if candidate_ids_for_explain:
-                content_scores = self.content_engine.score_candidates_for_history(
-                    history_business_ids=hist_ids,
-                    candidate_business_ids=candidate_ids_for_explain,
-                    history_weights=hist_ratings,
-                )
 
         if algo == "content":
             if hist_ids:
                 recs = self.content_engine.recommend_from_history(
                     history_business_ids=hist_ids,
+                    history_weights=hist_ratings,
                     k=k,
                     exclude_history=True,
                 )
@@ -277,6 +270,20 @@ class ModelBundle:
             )
             if not recs:
                 recs = self._fallback_popularity(k=k, exclude_ids=history_set)
+
+        if hist_ids and recs:
+            candidate_ids_for_explain = [str(business_id) for business_id, _ in recs]
+            content_weights = None
+            if hasattr(self.hybrid_recommender, "prepare_content_history_weights"):
+                content_weights = self.hybrid_recommender.prepare_content_history_weights(
+                    history_business_ids=hist_ids,
+                    history_ratings=hist_ratings,
+                )
+            content_scores = self.content_engine.score_candidates_for_history(
+                history_business_ids=hist_ids,
+                candidate_business_ids=candidate_ids_for_explain,
+                history_weights=content_weights,
+            )
 
         enriched: list[dict] = []
         for business_id, score in recs:
@@ -321,6 +328,9 @@ class ModelBundle:
                     "name": info.get("name"),
                     "city": info.get("city"),
                     "state": info.get("state"),
+                    "address": info.get("address"),
+                    "latitude": info.get("latitude"),
+                    "longitude": info.get("longitude"),
                     "stars": info.get("stars"),
                     "review_count": info.get("review_count"),
                     "categories": info.get("categories"),
@@ -382,6 +392,20 @@ def build_user_events(interactions_df: pd.DataFrame, max_events_per_user: int = 
     return out
 
 
+def build_user_events_for_subset(
+    interactions_df: pd.DataFrame,
+    user_ids: set[str],
+    max_events_per_user: int = 200,
+) -> dict[str, list[dict]]:
+    """Build user activity logs only for selected users to keep bundles slim."""
+    if interactions_df.empty or not user_ids:
+        return {}
+    filtered = interactions_df[interactions_df["user_id"].astype(str).isin({str(x) for x in user_ids})].copy()
+    if filtered.empty:
+        return {}
+    return build_user_events(filtered, max_events_per_user=max_events_per_user)
+
+
 def save_model_bundle(bundle: ModelBundle, artifact_dir: str) -> Path:
     """Persist model bundle and summary metadata for deployment."""
     out_dir = Path(artifact_dir)
@@ -395,7 +419,7 @@ def save_model_bundle(bundle: ModelBundle, artifact_dir: str) -> Path:
         "created_at_utc": bundle.created_at_utc,
         "n_businesses": int(len(bundle.business_index)),
         "n_users_with_history": int(len(bundle.user_histories)),
-        "n_user_profiles": int(len(bundle.user_profiles)),
+        "n_users_with_events": int(len(bundle.user_events)),
         "metrics": bundle.metrics,
         "bundle_path": str(bundle_path),
     }

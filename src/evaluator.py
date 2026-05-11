@@ -87,6 +87,9 @@ def evaluate_hybrid_model(
     time_col: str = "date",
     k: int = 10,
     max_users: int | None = None,
+    progress_every: int = 200,
+    verbose: bool = False,
+    relevance_threshold: float = 4.0,
 ) -> dict[str, float]:
     """Evaluate hybrid recommender over users with temporal holdout."""
     if train_df.empty or test_df.empty:
@@ -105,7 +108,8 @@ def evaluate_hybrid_model(
         history_items=(item_col, list),
         history_ratings=(rating_col, list),
     )
-    test_relevant = test_df.groupby(user_col)[item_col].apply(lambda s: set(s.astype(str)))
+    relevant_test = test_df[test_df[rating_col].astype(float) >= float(relevance_threshold)].copy()
+    test_relevant = relevant_test.groupby(user_col)[item_col].apply(lambda s: set(s.astype(str)))
     if max_users is not None and max_users > 0:
         test_relevant = test_relevant.iloc[:max_users]
 
@@ -114,7 +118,8 @@ def evaluate_hybrid_model(
     ndcg_scores: list[float] = []
     unique_recommended: set[str] = set()
 
-    for user_id, relevant in test_relevant.items():
+    total_users = len(test_relevant)
+    for idx, (user_id, relevant) in enumerate(test_relevant.items(), start=1):
         if user_id not in train_histories.index:
             continue
         history_items = [str(x) for x in train_histories.loc[user_id, "history_items"]]
@@ -138,6 +143,9 @@ def evaluate_hybrid_model(
         prec_scores.append(precision_at_k(recommended_ids, rel, k))
         rec_scores.append(recall_at_k(recommended_ids, rel, k))
         ndcg_scores.append(ndcg_at_k(recommended_ids, rel, k))
+
+        if verbose and progress_every > 0 and idx % progress_every == 0:
+            print(f"[INFO] Eval progress {idx}/{total_users} users")
 
     evaluated_users = len(prec_scores)
     item_universe = set()

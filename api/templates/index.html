@@ -4,6 +4,17 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Basic Demo - 3 Column Explainability</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
   <style>
     :root {
       --bg: #f7f8f4;
@@ -24,15 +35,20 @@
         radial-gradient(1200px 380px at 100% -20%, #d8f1e7, transparent),
         var(--bg);
       color: var(--ink);
+      overflow: hidden;
     }
     .wrap {
-      max-width: 1420px;
+      max-width: 2800px;
       margin: 22px auto;
-      padding: 0 14px 24px;
+      padding: 0 18px 24px;
       display: grid;
-      gap: 14px;
-      grid-template-columns: 360px 1fr 1fr;
+      gap: 18px;
+      grid-template-columns: 540px 540px 540px minmax(0, 1fr);
       align-items: start;
+      height: calc(100vh - 44px);
+    }
+    @media (max-width: 1800px) {
+      .wrap { grid-template-columns: 420px 420px 420px minmax(0, 1fr); }
     }
     @media (max-width: 1200px) {
       .wrap { grid-template-columns: 1fr; }
@@ -44,6 +60,27 @@
       padding: 14px;
       box-shadow: 0 10px 20px rgba(36, 50, 42, 0.05);
       min-height: 74vh;
+    }
+    .col-scroll {
+      max-height: 100%;
+      overflow: hidden;
+      padding-right: 4px;
+    }
+    .col-scroll:hover {
+      overflow-y: auto;
+    }
+    .col-fixed {
+      position: sticky;
+      top: 14px;
+      height: calc(100vh - 44px);
+    }
+    .col-fixed .card {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .map-card {
+      padding: 12px;
     }
     h1 { margin: 0 0 6px; font-size: 1.36rem; }
     h2 { margin: 0 0 10px; font-size: 1rem; }
@@ -92,6 +129,13 @@
       padding: 10px;
       margin-bottom: 8px;
       background: #fff;
+      transition: box-shadow .2s ease, border-color .2s ease;
+      position: relative;
+    }
+    .activity:hover,
+    .rec:hover {
+      border-color: #cfd8d0;
+      box-shadow: 0 10px 22px rgba(36, 50, 42, 0.07);
     }
     .activity h3, .rec h3 {
       margin: 0;
@@ -116,13 +160,239 @@
       position: sticky;
       top: 14px;
     }
+    .profile-metrics {
+      margin-top: 10px;
+      display: grid;
+      gap: 8px;
+    }
+    .metric-bar {
+      display: grid;
+      gap: 4px;
+    }
+    .metric-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: .81rem;
+      color: #425248;
+    }
+    .metric-head strong {
+      font-weight: 700;
+      color: #223028;
+    }
+    .metric-track {
+      width: 100%;
+      height: 9px;
+      border-radius: 999px;
+      background: #edf1eb;
+      overflow: hidden;
+      border: 1px solid #dfe6dd;
+    }
+    .metric-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width .28s ease;
+    }
+    .profile-summary {
+      display: grid;
+      gap: 4px;
+    }
+    .toggle-wrap {
+      margin-top: 10px;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .toggle-row .toggle-btn {
+      margin-top: 0;
+    }
+    .activity-summary {
+      font-size: 0.84rem;
+    }
+    .toggle-btn {
+      width: auto;
+      padding: 7px 10px;
+      font-size: .82rem;
+      font-weight: 700;
+      border-radius: 999px;
+      background: #edf4ef;
+      color: #315243;
+      border: 1px solid #d4dfd7;
+      cursor: pointer;
+    }
+    .toggle-btn:hover {
+      background: #e4eee7;
+    }
+    .hidden-block {
+      display: none;
+    }
+    .hidden-block.open {
+      display: block;
+    }
+    .recommend-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .recommend-map {
+      min-height: 0;
+      height: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--edge);
+      background: #f1f4f1;
+    }
+    .rec-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .rec-top-title {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .rec-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .loc-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid #1f7a4d;
+      background: linear-gradient(140deg, #2da46a, #1f7a4d);
+      color: #fff;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 1.05rem;
+      line-height: 1;
+      font-weight: 700;
+      cursor: pointer;
+      width: auto;
+      white-space: nowrap;
+    }
+    .loc-btn:hover {
+      background: linear-gradient(140deg, #35b777, #238a57);
+    }
+    .status-flag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border: 1px solid var(--edge);
+      background: #f5f8f5;
+      color: #506055;
+      white-space: nowrap;
+    }
+    .status-flag.open {
+      border-color: #a9ddb7;
+      color: #1f6b39;
+      background: #eefbf1;
+    }
+    .status-flag.closed {
+      border-color: #e4c3c3;
+      color: #8b2f2f;
+      background: #fff3f3;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 0 0 currentColor;
+      opacity: 0.95;
+    }
+    .status-flag.open .status-dot {
+      animation: statusPulse 1.6s ease-out infinite;
+    }
+    @keyframes statusPulse {
+      0% {
+        transform: scale(0.96);
+        box-shadow: 0 0 0 0 rgba(31, 107, 57, 0.38);
+      }
+      70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 8px rgba(31, 107, 57, 0);
+      }
+      100% {
+        transform: scale(0.96);
+        box-shadow: 0 0 0 0 rgba(31, 107, 57, 0);
+      }
+    }
+    .rank-tooltip {
+      background: rgba(18, 24, 38, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      color: #fff;
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 0.74rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      box-shadow: 0 8px 18px rgba(18, 24, 38, 0.22);
+    }
+    .rank-tooltip::before {
+      display: none;
+    }
+    .user-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border: 1px solid var(--edge);
+      background: #f5f7f5;
+      color: #536257;
+      white-space: nowrap;
+    }
+    .user-badge.elite {
+      border-color: #d9c280;
+      color: #7a5c00;
+      background: linear-gradient(140deg, #fff3bf, #ffe08a);
+      box-shadow: 0 6px 14px rgba(181, 137, 0, 0.12);
+    }
+    .user-badge.regular {
+      border-color: #d4dbd6;
+      color: #4f5e54;
+      background: #f5f7f5;
+    }
+    @media (max-width: 1100px) {
+      .recommend-map {
+        min-height: 520px;
+      }
+    }
+    @media (max-width: 1200px) {
+      body { overflow: auto; }
+      .wrap { height: auto; }
+      .col-scroll { overflow: auto; max-height: none; padding-right: 0; }
+      .col-fixed { position: static; height: auto; }
+      .col-fixed .card { height: auto; }
+      .recommend-map { height: 520px; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <aside class="card sticky">
-      <h1>Basic Explainability Demo</h1>
-      <p class="sub">Three-column view: user profile + checkpoint, activities, recommendations.</p>
+    <div class="col-scroll">
+      <aside class="card sticky">
+        <h1>Basic Explainability Demo</h1>
+        <p class="sub">Three-column view: user profile + checkpoint, activities, recommendations.</p>
 
       <label for="user">User ID</label>
       <input id="user" placeholder="Pick or enter user_id" />
@@ -156,19 +426,31 @@
       <div id="profile" class="meta">No profile loaded.</div>
 
       <hr />
-      <h2>Checkpoint</h2>
-      <div id="checkpoint" class="meta">No checkpoint yet.</div>
-    </aside>
+        <h2>Checkpoint</h2>
+        <div id="checkpoint" class="meta">No checkpoint yet.</div>
+      </aside>
+    </div>
 
-    <section class="card">
-      <h2>User Activities (Readable)</h2>
-      <div id="activities" class="meta">No activities loaded.</div>
-    </section>
+    <div class="col-scroll">
+      <section class="card">
+        <h2>User Activities (Readable)</h2>
+        <div id="activities" class="meta">No activities loaded.</div>
+      </section>
+    </div>
 
-    <section class="card">
-      <h2>Recommendations + Why</h2>
-      <div id="recommendations" class="meta">No recommendations yet.</div>
-    </section>
+    <div class="col-scroll">
+      <section class="card">
+        <h2>Recommendations + Why</h2>
+        <div id="recommendationsList" class="recommend-list meta">No recommendations yet.</div>
+      </section>
+    </div>
+
+    <div class="col-fixed">
+      <section class="card map-card">
+        <h2>Geo-preview</h2>
+        <div id="recommendationsMap" class="recommend-map"></div>
+      </section>
+    </div>
   </div>
 
   <script>
@@ -194,22 +476,440 @@
       return dt.toLocaleString();
     }
 
+    function toNum(v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function metricRatio(value, maxRef = 100, useLog = false) {
+      const n = toNum(value);
+      if (n === null || n < 0) return 0;
+      if (useLog) {
+        const top = Math.log1p(Math.max(maxRef, 1));
+        return Math.max(0, Math.min(1, Math.log1p(n) / top));
+      }
+      return Math.max(0, Math.min(1, n / Math.max(maxRef, 1)));
+    }
+
+    function metricColor(ratio) {
+      const hue = 6 + (ratio * 116);
+      return `hsl(${hue} 72% 42%)`;
+    }
+
+    function metricBar(label, value, opts = {}) {
+      const {
+        decimals = 0,
+        suffix = "",
+        maxRef = 100,
+        useLog = false
+      } = opts;
+      const n = toNum(value);
+      if (n === null) {
+        return `
+          <div class="metric-bar">
+            <div class="metric-head"><span>${label}</span><strong>N/A</strong></div>
+            <div class="metric-track"><div class="metric-fill" style="width:0%;background:#d8dfda;"></div></div>
+          </div>
+        `;
+      }
+      const ratio = metricRatio(n, maxRef, useLog);
+      const color = metricColor(ratio);
+      const display = decimals > 0 ? n.toFixed(decimals) : Math.round(n).toLocaleString();
+      return `
+        <div class="metric-bar">
+          <div class="metric-head"><span>${label}</span><strong>${display}${suffix}</strong></div>
+          <div class="metric-track"><div class="metric-fill" style="width:${Math.max(6, ratio * 100)}%;background:${color};"></div></div>
+        </div>
+      `;
+    }
+
+    function activityLevelBar(level) {
+      const norm = String(level || "").trim().toLowerCase();
+      const mapping = {
+        low: {ratio: 0.22, label: "Low"},
+        medium: {ratio: 0.58, label: "Medium"},
+        high: {ratio: 0.92, label: "High"}
+      };
+      const item = mapping[norm] || {ratio: 0.08, label: "N/A"};
+      const color = metricColor(item.ratio);
+      return `
+        <div class="metric-bar">
+          <div class="metric-head"><span>Activity level</span><strong>${item.label}</strong></div>
+          <div class="metric-track"><div class="metric-fill" style="width:${Math.max(6, item.ratio * 100)}%;background:${color};"></div></div>
+        </div>
+      `;
+    }
+
+    function renderActivityCard(a) {
+      return `
+        <article class="activity">
+          <h3>${a.business_name || "(unknown business)"}</h3>
+          <div class="meta">${a.city || "-"} | rated ${fmtNum(a.stars, 1)}/5 | ${fmtDate(a.date)}</div>
+          <div class="meta">${a.address || "Address N/A"}</div>
+          <div class="meta">${a.categories || ""}</div>
+        </article>
+      `;
+    }
+
+    function wireToggle(buttonId, blockId, collapsedLabel, expandedLabel) {
+      const btn = document.getElementById(buttonId);
+      const block = document.getElementById(blockId);
+      if (!btn || !block) return;
+      btn.addEventListener("click", () => {
+        const isOpen = block.classList.toggle("open");
+        btn.textContent = isOpen ? expandedLabel : collapsedLabel;
+      });
+    }
+
     function setStatus(ok, msg) {
       statusEl.innerHTML = `<span class="${ok ? "ok" : "bad"}">[${ok ? "PASS" : "FAIL"}]</span> ${msg}`;
     }
 
+    const MAP_DEFAULT_CENTER = [39.5, -98.35];
+    const MAP_DEFAULT_ZOOM = 4;
+    let recMap;
+    let recMarkers;
+    let recMarkerIndex = new Map();
+    let recMarkerMeta = new Map();
+    let recDataIndex = new Map();
+    let lastHighlightedId = null;
+    const MARKER_RADIUS = 4.5;
+    const MARKER_HIGHLIGHT = 9;
+    let markerPulseTimer = null;
+    let markerPulsePhase = 0;
+
+    function initRecommendationMap() {
+      if (recMap) return;
+      const mapEl = document.getElementById("recommendationsMap");
+      if (!mapEl || typeof L === "undefined") return;
+      recMap = L.map(mapEl, { zoomControl: true }).setView(MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 18,
+      }).addTo(recMap);
+      recMarkers = L.layerGroup().addTo(recMap);
+      setTimeout(() => recMap.invalidateSize(), 0);
+    }
+
+    function openLabel(rec) {
+      if (rec.open_now === true) return "OPEN";
+      if (rec.open_now === false) return "CLOSED";
+      return "HOURS N/A";
+    }
+
+    function buildPopup(rec) {
+      const lat = Number(rec.latitude);
+      const lon = Number(rec.longitude);
+      const coords = Number.isFinite(lat) && Number.isFinite(lon)
+        ? `Lat: ${lat.toFixed(5)} | Lon: ${lon.toFixed(5)}`
+        : "Lat/Lon: N/A";
+      const address = rec.address || "N/A";
+      const stars = rec.stars ?? "n/a";
+      const rankText = rec._rank ? `Rank #${rec._rank}` : "Rank N/A";
+      return `
+        <div style="font-size:0.85rem;line-height:1.35;">
+          <div style="font-weight:700;margin-bottom:4px;">${rec.name || "Unnamed"}</div>
+          <div>${rankText} | ⭐ ${stars} | ${openLabel(rec)}</div>
+          <div>${address}</div>
+          <div style="color:#566; margin-top:4px;">${coords}</div>
+        </div>
+      `;
+    }
+
+    function stopMarkerPulseLoop() {
+      if (markerPulseTimer) {
+        window.clearInterval(markerPulseTimer);
+        markerPulseTimer = null;
+      }
+    }
+
+    function markerPalette(rec, highlighted = false) {
+      if (rec.open_now === true) {
+        return {
+          stroke: highlighted ? "#166534" : "#1f6b39",
+          fill: highlighted ? "#16a34a" : "#22c55e",
+        };
+      }
+      if (rec.open_now === false) {
+        return {
+          stroke: highlighted ? "#991b1b" : "#8b2f2f",
+          fill: highlighted ? "#dc2626" : "#ef4444",
+        };
+      }
+      return {
+        stroke: highlighted ? "#1f2937" : "#435263",
+        fill: highlighted ? "#475569" : "#6d7c8d",
+      };
+    }
+
+    function applyMarkerStyle(marker, rec, highlighted = false, phase = markerPulsePhase) {
+      const palette = markerPalette(rec, highlighted);
+      let radius = highlighted ? MARKER_HIGHLIGHT : MARKER_RADIUS;
+      let fillOpacity = highlighted ? 0.94 : 0.8;
+
+      if (rec.open_now === true) {
+        const pulseRatio = (Math.sin(phase) + 1) / 2;
+        const pulseAmp = highlighted ? 2.3 : 1.45;
+        radius += pulseRatio * pulseAmp;
+        fillOpacity += pulseRatio * (highlighted ? 0.13 : 0.15);
+      }
+
+      marker.setStyle({
+        color: palette.stroke,
+        fillColor: palette.fill,
+        fillOpacity,
+        weight: highlighted ? 2.2 : 1.15,
+      });
+      marker.setRadius(radius);
+    }
+
+    function startMarkerPulseLoop() {
+      stopMarkerPulseLoop();
+      const hasOpenMarkers = Array.from(recMarkerMeta.values()).some((meta) => meta.rec.open_now === true);
+      if (!hasOpenMarkers) return;
+
+      markerPulsePhase = 0;
+      markerPulseTimer = window.setInterval(() => {
+        markerPulsePhase += 0.34;
+        recMarkerMeta.forEach((meta) => {
+          applyMarkerStyle(meta.marker, meta.rec, !!meta.highlighted, markerPulsePhase);
+        });
+      }, 120);
+    }
+
+    function userTierBadge(profile) {
+      const isElite = !!profile.is_elite_user;
+      return `
+        <span class="user-badge ${isElite ? "elite" : "regular"}">
+          ${isElite ? "Elite User" : "Regular User"}
+        </span>
+      `;
+    }
+
+    function statusFlag(rec) {
+      if (rec.open_now === true) {
+        return `<span class="status-flag open"><span class="status-dot"></span>Open</span>`;
+      }
+      if (rec.open_now === false) {
+        return `<span class="status-flag closed"><span class="status-dot"></span>Closed</span>`;
+      }
+      return `<span class="status-flag"><span class="status-dot"></span>Hours N/A</span>`;
+    }
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const toRad = (deg) => (deg * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function mapFlyDurationSeconds(targetLat, targetLon, targetZoom = 13) {
+      if (!recMap) return 1.6;
+      const center = recMap.getCenter();
+      const currentZoom = typeof recMap.getZoom === "function" ? recMap.getZoom() : MAP_DEFAULT_ZOOM;
+      const km = haversineKm(center.lat, center.lng, targetLat, targetLon);
+      const distanceRatio = Math.min(1, Math.log1p(Math.max(km, 0)) / Math.log(1 + 4500));
+      const zoomRatio = Math.min(1, Math.abs(currentZoom - targetZoom) / 10);
+      return 0.7 + distanceRatio * 2.1 + zoomRatio * 0.35;
+    }
+
+    function renderRecommendationCards(rows) {
+      return rows.length
+        ? rows
+            .map((r) => {
+              const pills = [
+                `<span class="pill">rank:#${r._rank || "?"}</span>`,
+                `<span class="pill">activity:${r.activity_level}</span>`,
+                `<span class="pill">history:${r.history_count}</span>`,
+                `<span class="pill">content:${Number(r.content_score).toFixed(3)}</span>`,
+                `<span class="pill">cf:${Number(r.cf_pred_rating).toFixed(2)}</span>`,
+                `<span class="pill">alpha:${Number(r.hybrid_alpha).toFixed(3)}</span>`,
+                `<span class="pill">prior:${Number(r.prior_score).toFixed(3)}</span>`
+              ];
+              const overlaps = (r.category_overlap || []).length
+                ? `<div class="meta"><strong>Category overlap:</strong> ${(r.category_overlap || []).join(", ")}</div>`
+                : "";
+              return `
+                <article class="rec">
+                  <div class="rec-top">
+                    <div class="rec-top-title">
+                      <h3>${r.name || "(unknown business)"}</h3>
+                    </div>
+                    <div class="rec-actions">
+                      ${statusFlag(r)}
+                      <button class="loc-btn" data-bid="${r.business_id}">Location</button>
+                    </div>
+                  </div>
+                  <div class="meta">
+                    ${r.city || "-"}, ${r.state || "-"} | score=${Number(r.score).toFixed(4)} | via=${r.algorithm || "hybrid"}
+                  </div>
+                  <div class="meta">
+                    ${pills.join(" ")}
+                  </div>
+                  <div class="meta"><strong>Today hours:</strong> ${r.today_hours || "N/A"}</div>
+                  <div class="meta">${r.categories || ""}</div>
+                  ${overlaps}
+                  ${(r.reason_tags || []).map((x) => `<div class="meta">- ${x}</div>`).join("")}
+                  <div class="explain">${r.explanation}</div>
+                </article>
+              `;
+            })
+            .join("")
+        : "<div class='meta'>No recommendations.</div>";
+    }
+
+    function withRecommendationRanks(rows) {
+      return rows.map((row, idx) => ({
+        ...row,
+        _rank: idx + 1,
+        _rank_total: rows.length,
+      }));
+    }
+
+    function updateRecommendationMap(rows) {
+      initRecommendationMap();
+      if (!recMap || !recMarkers) return;
+      stopMarkerPulseLoop();
+      recMarkers.clearLayers();
+      recMarkerIndex = new Map();
+      recMarkerMeta = new Map();
+      recDataIndex = new Map();
+      const points = [];
+      rows.forEach((r) => {
+        recDataIndex.set(String(r.business_id), r);
+        const lat = parseFloat(r.latitude);
+        const lon = parseFloat(r.longitude);
+        if (Number.isNaN(lat) || Number.isNaN(lon)) return;
+        const marker = L.circleMarker([lat, lon]).bindPopup(buildPopup(r));
+        applyMarkerStyle(marker, r, false);
+        marker.bindTooltip(`#${r._rank}`, {
+          permanent: true,
+          direction: "center",
+          className: "rank-tooltip",
+          opacity: 0.92,
+        });
+        recMarkers.addLayer(marker);
+        recMarkerIndex.set(String(r.business_id), marker);
+        recMarkerMeta.set(String(r.business_id), {
+          marker,
+          rec: r,
+          highlighted: false,
+        });
+        points.push([lat, lon]);
+      });
+      if (points.length) {
+        recMap.fitBounds(points, { padding: [20, 20], maxZoom: 12 });
+      } else {
+        recMap.setView(MAP_DEFAULT_CENTER, MAP_DEFAULT_ZOOM);
+      }
+      startMarkerPulseLoop();
+      setTimeout(() => recMap.invalidateSize(), 0);
+    }
+
+    function focusOnRecommendation(businessId) {
+      initRecommendationMap();
+      if (!recMap) return;
+      const rec = recDataIndex.get(String(businessId));
+      if (!rec) return;
+      console.log("Selected restaurant:", rec);
+      const lat = parseFloat(rec.latitude);
+      const lon = parseFloat(rec.longitude);
+      if (Number.isNaN(lat) || Number.isNaN(lon)) {
+        setStatus(false, "No coordinates for this business");
+        return;
+      }
+      const bid = String(businessId);
+      let marker = recMarkerIndex.get(bid);
+      if (!marker || typeof marker.setRadius !== "function") {
+        if (marker) {
+          recMarkers.removeLayer(marker);
+        }
+        marker = L.circleMarker([lat, lon]).bindPopup(buildPopup(rec));
+        applyMarkerStyle(marker, rec, false);
+        marker.bindTooltip(`#${rec._rank || "?"}`, {
+          permanent: true,
+          direction: "center",
+          className: "rank-tooltip",
+          opacity: 0.92,
+        });
+        marker.addTo(recMarkers);
+        recMarkerIndex.set(bid, marker);
+        recMarkerMeta.set(bid, {
+          marker,
+          rec,
+          highlighted: false,
+        });
+      }
+      if (lastHighlightedId && recMarkerIndex.has(lastHighlightedId)) {
+        const prev = recMarkerIndex.get(lastHighlightedId);
+        const prevMeta = recMarkerMeta.get(lastHighlightedId);
+        if (prev && prevMeta && typeof prev.setRadius === "function") {
+          prevMeta.highlighted = false;
+          applyMarkerStyle(prev, prevMeta.rec, false);
+        }
+      }
+      lastHighlightedId = bid;
+      if (typeof marker.setRadius === "function") {
+        const meta = recMarkerMeta.get(bid);
+        if (meta) {
+          meta.highlighted = true;
+          applyMarkerStyle(marker, meta.rec, true);
+        } else {
+          applyMarkerStyle(marker, rec, true);
+        }
+      }
+      startMarkerPulseLoop();
+      recMap.invalidateSize();
+      recMap.once("moveend", () => {
+        marker.openPopup();
+      });
+      recMap.flyTo([lat, lon], 13, {
+        animate: true,
+        duration: mapFlyDurationSeconds(lat, lon, 13),
+        easeLinearity: 0.18,
+      });
+    }
+
+    function bindLocationButtons(rows) {
+      const buttons = document.querySelectorAll(".loc-btn");
+      buttons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const bid = btn.getAttribute("data-bid");
+          if (!bid) return;
+          focusOnRecommendation(bid);
+        });
+      });
+    }
+
+    function renderRecommendations(rows) {
+      const listEl = document.getElementById("recommendationsList");
+      if (!listEl) return;
+      const rankedRows = withRecommendationRanks(rows);
+      listEl.innerHTML = renderRecommendationCards(rankedRows);
+      updateRecommendationMap(rankedRows);
+      bindLocationButtons(rankedRows);
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      initRecommendationMap();
+    });
+
     async function loadUsers() {
-      const res = await fetch("/users?limit=80&source=yelp");
+      const res = await fetch("/users?limit=15&source=yelp");
       const data = await res.json();
       usersEl.innerHTML = "";
-      (data.users || []).forEach((u) => {
+      const records = data.user_records || [];
+      records.forEach((u) => {
         const opt = document.createElement("option");
-        opt.value = u;
-        opt.textContent = u;
+        opt.value = u.user_id;
+        opt.textContent = u.label || u.user_id;
         usersEl.appendChild(opt);
       });
       if (usersEl.value) userEl.value = usersEl.value;
-      setStatus(true, `loaded ${data.users.length} sample users`);
+      setStatus(true, `loaded ${records.length} random sample users`);
     }
 
     async function loadProfileAndActivity() {
@@ -223,29 +923,59 @@
       const profile = await profileRes.json();
       const acts = await actRes.json();
 
+      const primaryMetricBars = [
+        activityLevelBar(profile.activity_level),
+        metricBar("Interactions", profile.interaction_count, {maxRef: 100, useLog: true}),
+        metricBar("Profile reviews", profile.review_count_profile, {maxRef: 5000, useLog: true}),
+        metricBar("Avg given stars", profile.avg_given_stars, {decimals: 2, maxRef: 5}),
+        metricBar("Elite years", profile.elite_year_count, {maxRef: 10}),
+        metricBar("Friends", profile.friends_count, {maxRef: 2000, useLog: true})
+      ].join("");
+
+      const extraMetricBars = [
+        metricBar("Positive ratio", (profile.positive_rating_ratio ?? 0) * 100, {decimals: 1, maxRef: 100, suffix: "%"}),
+        metricBar("Profile avg stars", profile.average_stars_profile, {decimals: 2, maxRef: 5}),
+        metricBar("Fans", profile.fans, {maxRef: 500, useLog: true}),
+        metricBar("Useful votes", profile.useful_votes, {maxRef: 10000, useLog: true}),
+        metricBar("Funny votes", profile.funny_votes, {maxRef: 5000, useLog: true}),
+        metricBar("Cool votes", profile.cool_votes, {maxRef: 5000, useLog: true})
+      ].join("");
+
       document.getElementById("profile").innerHTML = `
-        <div><strong>User ID:</strong> <span class="uid">${profile.user_id}</span></div>
-        <div><strong>Name:</strong> ${profile.name || "N/A"}</div>
-        <div><strong>Activity level:</strong> ${profile.activity_level || "N/A"}</div>
-        <div><strong>Interaction count:</strong> ${profile.interaction_count ?? 0}</div>
-        <div><strong>Avg given stars:</strong> ${fmtNum(profile.avg_given_stars, 2)}</div>
-        <div><strong>Positive rating ratio:</strong> ${fmtNum((profile.positive_rating_ratio ?? 0) * 100, 1)}%</div>
-        <div><strong>Top categories:</strong> ${fmtList(profile.top_categories)}</div>
-        <div><strong>Recent activity:</strong> ${fmtDate(profile.recent_activity_date)}</div>
-        <div><strong>Yelping since:</strong> ${profile.yelping_since || "N/A"}</div>
-        <div><strong>Profile review count:</strong> ${profile.review_count_profile ?? "N/A"}</div>
-        <div><strong>Profile avg stars:</strong> ${profile.average_stars_profile ?? "N/A"}</div>
+        <div class="profile-summary">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            ${userTierBadge(profile)}
+            <span class="uid">${profile.name || "User"} - ${profile.user_id}</span>
+          </div>
+          <div><strong>User ID:</strong> <span class="uid">${profile.user_id}</span></div>
+          <div><strong>Name:</strong> ${profile.name || "N/A"}</div>
+          <div><strong>Yelping since:</strong> ${profile.yelping_since || "N/A"}</div>
+          <div><strong>Top categories:</strong> ${fmtList(profile.top_categories)}</div>
+          <div><strong>Recent activity:</strong> ${fmtDate(profile.recent_activity_date)}</div>
+        </div>
+        <div class="profile-metrics">${primaryMetricBars}</div>
+        <div class="toggle-wrap">
+          <button id="profileMoreBtn" class="toggle-btn" type="button">Show more profile details</button>
+          <div id="profileMoreBlock" class="hidden-block">
+            <div class="profile-metrics" style="margin-top:10px;">${extraMetricBars}</div>
+          </div>
+        </div>
         <div class="explain">${profile.activity_summary || "No summary available."}</div>
       `;
 
       const rows = acts.activities || [];
-      document.getElementById("activities").innerHTML = rows.length ? rows.map((a) => `
-        <article class="activity">
-          <h3>${a.business_name || "(unknown business)"}</h3>
-          <div class="meta">${a.city || "-"} | rated ${fmtNum(a.stars, 1)}/5 | ${fmtDate(a.date)}</div>
-          <div class="meta">${a.categories || ""}</div>
-        </article>
-      `).join("") : "<div class='meta'>No activities for this user.</div>";
+      document.getElementById("activities").innerHTML = rows.length ? `
+        <div class="toggle-row">
+          <div class="meta activity-summary">History loaded: ${rows.length} rated businesses from this user.</div>
+          <button id="activitiesToggleBtn" class="toggle-btn" type="button">Hide all history</button>
+        </div>
+        <div id="activitiesAllBlock" class="hidden-block open">
+          ${rows.map(renderActivityCard).join("")}
+        </div>
+      ` : "<div class='meta'>No activities for this user.</div>";
+
+      wireToggle("profileMoreBtn", "profileMoreBlock", "Show more profile details", "Show less profile details");
+      wireToggle("activitiesToggleBtn", "activitiesAllBlock", `Show all history (${rows.length})`, "Hide all history");
 
       setStatus(true, `loaded profile + ${rows.length} activities`);
     }
@@ -265,25 +995,7 @@
       if (!res.ok) return setStatus(false, data.detail || "recommend failed");
 
       const rows = data.recommendations || [];
-      document.getElementById("recommendations").innerHTML = rows.length ? rows.map((r) => `
-        <article class="rec">
-          <h3>${r.name || "(unknown business)"}</h3>
-          <div class="meta">${r.city || "-"}, ${r.state || "-"} | score=${Number(r.score).toFixed(4)} | via=${r.algorithm}</div>
-          <div>
-            <span class="pill">activity: ${r.activity_level}</span>
-            <span class="pill">history: ${r.history_count}</span>
-            <span class="pill">content: ${Number(r.content_score).toFixed(3)}</span>
-            <span class="pill">cf_pred: ${Number(r.cf_pred_rating).toFixed(2)}</span>
-            <span class="pill">alpha: ${Number(r.hybrid_alpha).toFixed(3)}</span>
-            <span class="pill">prior: ${Number(r.prior_score).toFixed(3)}</span>
-          </div>
-          <div class="meta">${r.categories || ""}</div>
-          ${(r.category_overlap || []).length ? `<div class="meta"><strong>Category overlap:</strong> ${(r.category_overlap || []).join(", ")}</div>` : ""}
-          ${(r.reason_tags || []).map((x) => `<div class="meta">- ${x}</div>`).join("")}
-          <div class="explain">${r.explanation}</div>
-        </article>
-      `).join("") : "<div class='meta'>No recommendations.</div>";
-
+      renderRecommendations(rows);
       setStatus(true, `recommended ${rows.length} businesses using ${algorithm}`);
     }
 

@@ -98,6 +98,9 @@ class YelpHybridPipeline:
         min_history: int = 3,
         n_test_items: int = 1,
         max_users: int | None = None,
+        progress_every: int = 200,
+        verbose: bool = False,
+        relevance_threshold: float = 4.0,
     ) -> dict[str, float]:
         """Evaluate ranking quality with temporal holdout and top-K metrics."""
         source_df = interactions_df if interactions_df is not None else self.interactions_df
@@ -126,7 +129,16 @@ class YelpHybridPipeline:
 
         self.cf_engine.fit(train_df)
         self.interactions_df = train_df.copy()
-        return evaluate_hybrid_model(self.hybrid, train_df, test_df, k=k, max_users=max_users)
+        return evaluate_hybrid_model(
+            self.hybrid,
+            train_df,
+            test_df,
+            k=k,
+            max_users=max_users,
+            progress_every=progress_every,
+            verbose=verbose,
+            relevance_threshold=relevance_threshold,
+        )
 
 
 def build_pipeline_from_paths(

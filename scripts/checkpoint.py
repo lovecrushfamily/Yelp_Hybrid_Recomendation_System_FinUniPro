@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
         description="Terminal checkpoint to classify codebase/deployment health."
     )
     parser.add_argument("--raw-data-dir", default="raw_data")
+    parser.add_argument("--data-dir", default="data")
     parser.add_argument("--processed-dir", default="processed")
     parser.add_argument("--bundle-path", default="artifacts/model_bundle.pkl")
     return parser.parse_args()
@@ -42,17 +43,21 @@ def main():
             _print_check(f"Dependency {mod}", False, str(exc))
 
     raw_dir = Path(args.raw_data_dir)
-    expected_raw = [
-        "yelp_academic_dataset_business.json",
-        "yelp_academic_dataset_review.json",
-        "yelp_academic_dataset_tip.json",
-        "yelp_academic_dataset_checkin.json",
+    data_dir = Path(args.data_dir)
+    expected_inputs = [
+        ("Business source", raw_dir / "yelp_academic_dataset_business.json", data_dir / "business_main.parquet"),
+        ("Review source", raw_dir / "yelp_academic_dataset_review.json", data_dir / "reviews.parquet"),
+        ("Tip source", raw_dir / "yelp_academic_dataset_tip.json", data_dir / "tips.parquet"),
+        ("Check-in source", raw_dir / "yelp_academic_dataset_checkin.json", data_dir / "checkins.parquet"),
     ]
-    for filename in expected_raw:
-        path = raw_dir / filename
-        ok = path.exists()
+    for name, raw_path, parquet_path in expected_inputs:
+        ok = raw_path.exists() or parquet_path.exists()
         all_ok = all_ok and ok
-        _print_check(f"Raw file {filename}", ok, str(path))
+        _print_check(
+            name,
+            ok,
+            f"raw_exists={raw_path.exists()} ({raw_path}) | parquet_exists={parquet_path.exists()} ({parquet_path})",
+        )
 
     processed_dir = Path(args.processed_dir)
     expected_processed = ["businesses.pkl", "interactions.pkl", "preprocess_summary.json"]

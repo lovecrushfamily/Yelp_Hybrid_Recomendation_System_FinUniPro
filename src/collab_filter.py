@@ -138,6 +138,38 @@ class CFEngine:
         score = float(np.clip(score, self.min_rating, self.max_rating))
         return score
 
+    def predict_ratings_for_user(
+        self,
+        user_id: str,
+        candidate_business_ids: list[str],
+    ) -> list[tuple[str, float]]:
+        """Vectorized prediction for one user across many candidate businesses."""
+        if not candidate_business_ids:
+            return []
+
+        candidate_ids = [str(b) for b in candidate_business_ids if str(b) in self.item_to_idx]
+        if not candidate_ids:
+            return []
+
+        item_idx = np.array([self.item_to_idx[b] for b in candidate_ids], dtype=int)
+        scores = np.full(len(candidate_ids), self.global_mean, dtype=float)
+
+        if self.item_bias is not None:
+            scores += self.item_bias[item_idx]
+
+        if (
+            user_id in self.user_to_idx
+            and self.user_bias is not None
+            and self.user_factors is not None
+            and self.item_factors is not None
+        ):
+            u = self.user_to_idx[user_id]
+            scores += float(self.user_bias[u])
+            scores += self.item_factors[item_idx] @ self.user_factors[u]
+
+        scores = np.clip(scores, self.min_rating, self.max_rating)
+        return [(candidate_ids[i], float(scores[i])) for i in range(len(candidate_ids))]
+
     def recommend_for_user(
         self,
         user_id: str,
@@ -162,6 +194,16 @@ class CFEngine:
         if not candidate_ids:
             return []
 
-        scores = [(b, self.predict_rating(user_id, b)) for b in candidate_ids]
-        scores.sort(key=lambda x: x[1], reverse=True)
-        return scores[:k]
+        scores = self.predict_ratings_for_user(user_id, candidate_ids)
+        if not scores:
+            return []
+
+        if k >= len(scores):
+            scores.sort(key=lambda x: x[1], reverse=True)
+            return scores
+
+        score_values = np.array([x[1] for x in scores], dtype=float)
+        top_idx = np.argpartition(-score_values, k - 1)[:k]
+        ranked = [scores[i] for i in top_idx]
+        ranked.sort(key=lambda x: x[1], reverse=True)
+        return ranked[:k]

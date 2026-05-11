@@ -5,3 +5,12 @@ notebooks/
 # processed/
 raw_data/
 artifacts/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+/Yelp-Photos
+/processed
+/src/__pycache__
+/api/__pycache__
+/scripts/__pycache__

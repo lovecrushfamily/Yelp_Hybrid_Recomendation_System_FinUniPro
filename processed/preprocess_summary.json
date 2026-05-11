@@ -5,8 +5,9 @@
     "tip_path": "raw_data/yelp_academic_dataset_tip.json",
     "checkin_path": "raw_data/yelp_academic_dataset_checkin.json",
     "out_dir": "processed",
-    "city": "Philadelphia",
-    "state": "PA",
+    "city": "",
+    "state": "",
+    "usa_only": true,
     "category_keyword": "Restaurants",
     "min_business_reviews": 20,
     "min_user_reviews": 3,
@@ -14,18 +15,20 @@
     "chunksize": 200000,
     "max_review_chunks": 0,
     "max_aux_chunks": 0,
-    "save_reviews": false
+    "save_reviews": false,
+    "progress_every": 5,
+    "quiet": false
   },
-  "n_businesses": 3896,
-  "n_reviews": 666323,
-  "n_interactions": 456203,
+  "n_businesses": 32952,
+  "n_reviews": 4468089,
+  "n_interactions": 3038696,
   "paths": {
     "businesses": "processed/businesses.pkl",
     "interactions": "processed/interactions.pkl",
     "reviews": null
   },
   "signals": {
-    "businesses_with_tip_count": 3803,
-    "businesses_with_checkin_count": 3874
+    "businesses_with_tip_count": 32191,
+    "businesses_with_checkin_count": 32889
   }
 }

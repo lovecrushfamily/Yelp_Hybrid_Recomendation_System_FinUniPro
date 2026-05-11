@@ -18,8 +18,14 @@ def parse_args() -> argparse.Namespace:
         description="Run full recommendation pipeline: preprocess -> train -> checkpoint."
     )
     parser.add_argument("--python", default=sys.executable)
-    parser.add_argument("--city", default="Philadelphia")
-    parser.add_argument("--state", default="PA")
+    parser.add_argument("--city", default="")
+    parser.add_argument("--state", default="")
+    parser.add_argument("--data-dir", default="data")
+    parser.add_argument(
+        "--input-format",
+        choices=["auto", "json", "parquet"],
+        default="auto",
+    )
     parser.add_argument("--processed-dir", default="processed")
     parser.add_argument("--artifact-dir", default="artifacts")
     parser.add_argument("--local-data-dir", default="local_data")
@@ -32,6 +38,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-review-chunks", type=int, default=8)
     parser.add_argument("--max-aux-chunks", type=int, default=8)
     parser.add_argument("--max-eval-users", type=int, default=200)
+    parser.add_argument("--relevance-threshold", type=float, default=4.0)
+    parser.add_argument("--progress-every", type=int, default=200)
+    parser.add_argument("--quiet", action="store_true")
     return parser.parse_args()
 
 
@@ -46,12 +55,18 @@ def main():
     preprocess_cmd = [
         python,
         str(project_root / "scripts" / "preprocess_yelp.py"),
+        "--data-dir", args.data_dir,
+        "--input-format", args.input_format,
         "--out-dir", args.processed_dir,
         "--city", args.city,
         "--state", args.state,
+        "--usa-only",
         "--max-review-chunks", max_review_chunks,
         "--max-aux-chunks", max_aux_chunks,
+        "--progress-every", str(max(1, args.progress_every // 4)),
     ]
+    if args.quiet:
+        preprocess_cmd.append("--quiet")
     train_cmd = [
         python,
         str(project_root / "scripts" / "train_recommender.py"),
@@ -60,11 +75,16 @@ def main():
         "--local-data-dir", args.local_data_dir,
         "--dataset-mode", args.dataset_mode,
         "--max-eval-users", str(args.max_eval_users),
+        "--relevance-threshold", str(args.relevance_threshold),
+        "--progress-every", str(args.progress_every),
     ]
+    if args.quiet:
+        train_cmd.append("--quiet")
     checkpoint_cmd = [
         python,
         str(project_root / "scripts" / "checkpoint.py"),
         "--raw-data-dir", "raw_data",
+        "--data-dir", args.data_dir,
         "--processed-dir", args.processed_dir,
         "--bundle-path", str(Path(args.artifact_dir) / "model_bundle.pkl"),
     ]
